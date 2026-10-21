@@ -70,11 +70,11 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 
 ## Phase 4 — GitHub Actions build & delivery
 
-- [ ] Workflow template: ubuntu-latest, Flutter action, Gradle cache, `timeout-minutes: 20`
+- [x] Workflow: ubuntu-latest, Flutter 3.47.7 (pinned), Gradle cache, `timeout-minutes: 20`, analyze + test gates — first run patched green in 8m36s (build succeeded)
+- [x] Delivery: rolling **`latest-build` release asset** per run (`--clobber` overwrite). Artifact-upload route was abandoned: the shared 500 MB personal storage quota is full (scan showed 0 MB of Actions caches/artifacts across all 86 repos → suspected old GitHub Packages containers; gh token lacks `read:packages` to confirm). Release storage is separate and effectively unlimited.
 - [ ] Trigger via `repository_dispatch` from backend; poll `runs` API; map statuses to app states
-- [ ] Queue UX: pre-existing queue banner (done in mock) now fed by real runner concurrency data
-- [ ] APK delivery: upload artifact + (preferred) publish to Release; signed or debug-signed per channel
-- [ ] Download screen: direct install link, artifact size, build id, expiry (retention policy)
+- [ ] Queue UX: pre-existing queue banner (done in mock) now fed by real Automation concurrency data
+- [ ] Download screen: direct install link to `releases/download/latest-build/app-release.apk` + build id/size info
 
 ## Phase 5 — Hardening & launch prep
 
