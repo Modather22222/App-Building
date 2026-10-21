@@ -52,8 +52,8 @@ jobs:
       - name: Unit tests
         run: flutter test
 
-      - name: Build arm64 APK (release, unsigned)
-        run: flutter build apk --release --target-platform android-arm64
+      - name: Build APK (release, unsigned, arm64 + armv7)
+        run: flutter build apk --release
 
       - name: Publish APK to rolling release
         env:
@@ -63,5 +63,5 @@ jobs:
             gh release create latest-build --latest --title "Latest arm64 build" \
               --notes "Rolling test build from CI. Every push to main replaces this APK."
           gh release edit latest-build --latest \
-            --notes "Build #${{ github.run_number }} · commit ${{ github.sha }} · arm64 · debug-signed (installable)"
+            --notes "Build #${{ github.run_number }} · commit ${{ github.sha }} · universal (arm64 + armv7) · debug-signed (installable)"
           gh release upload latest-build build/app/outputs/flutter-apk/app-release.apk --clobber
