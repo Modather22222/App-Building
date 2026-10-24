@@ -46,7 +46,7 @@ markers_json() {
   local out="{" first=1
   for k in "${!MARKERS[@]}"; do
     [[ $first -eq 1 ]] || out+=","
-    out+="$(jq -n --arg k "$k" --arg v "${MARKERS[$k]}" '"\($k)":\($v)')"
+    out+="$(jq -n --arg k "$k" --arg v "${MARKERS[$k]}" '{($k): $v}')"
     first=0
   done
   echo "${out}}"
@@ -127,7 +127,13 @@ git add -A
 git commit -qm "Initial generated app (via App Factory)"
 export GH_TOKEN="$FACTORY_GH_PAT"
 gh auth setup-git > /dev/null 2>&1 || true
-gh repo create "${REPO_OWNER}/${REPO_NAME}" --private --source . --remote origin --push > /dev/null
+if gh repo view "${REPO_OWNER}/${REPO_NAME}" > /dev/null 2>&1; then
+  # Retry of the same project: repo already exists — reuse and overwrite it.
+  git remote add origin "https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
+  git push -q --force -u origin main
+else
+  gh repo create "${REPO_OWNER}/${REPO_NAME}" --private --source . --remote origin --push > /dev/null
+fi
 
 stage_end pushing
 mark queued

@@ -48,7 +48,10 @@ jobs:
           set -e
           MAN=android/app/src/main/AndroidManifest.xml
           if ! grep -q 'android.permission.INTERNET' "$MAN"; then
-            sed -i 's|^\s*<manifest |    <uses-permission android:name="android.permission.INTERNET"/>\n<manifest |' "$MAN"
+            # Must land INSIDE the manifest element (appended after its line) —
+            # inserting before the root element breaks the XML parse.
+            sed -i '/<manifest /a\
+                <uses-permission android:name="android.permission.INTERNET"/' "$MAN"
           fi
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/' android/app/build.gradle.kts
