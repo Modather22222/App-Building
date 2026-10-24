@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
+import 'supabase_config.dart';
 
 /// Overridden in main() with the real [SharedPreferences] instance.
 final sharedPrefsProvider = Provider<SharedPreferences>((ref) {
@@ -26,47 +28,57 @@ final onboardingProvider = NotifierProvider<OnboardingState, bool>(
 );
 
 class AuthState extends Notifier<AuthSession?> {
+  StreamSubscription? _authEvents;
+
   @override
   AuthSession? build() {
-    final prefs = ref.read(sharedPrefsProvider);
-    final email = prefs.getString('auth.email');
-    if (email == null) return null;
-    return AuthSession(
-      name: prefs.getString('auth.name') ?? email.split('@').first,
-      email: email,
-      guest: prefs.getBool('auth.guest') ?? false,
+    if (!SupabaseConfig.enabled) return null;
+    final auth = SupabaseConfig.client.auth;
+    _authEvents = auth.onAuthStateChange.listen(
+      (event) => state = _fromSession(event.session),
     );
+    ref.onDispose(() => _authEvents?.cancel());
+    return _fromSession(auth.currentSession);
   }
 
-  Future<void> signIn({required String email, String? name}) {
-    final displayName = (name != null && name.trim().isNotEmpty)
-        ? name.trim()
-        : email.split('@').first;
-    return _persist(AuthSession(name: displayName, email: email));
+  AuthSession? _fromSession(Session? session) {
+    if (session == null) return null;
+    final user = session.user;
+    final email = user.email ?? '';
+    final metaName = switch (user.userMetadata?['name']) {
+      final String s when s.trim().isNotEmpty => s.trim(),
+      _ => null,
+    };
+    final fallbackName = email.isEmpty ? 'Member' : email.split('@').first;
+    return AuthSession(name: metaName ?? fallbackName, email: email);
   }
 
-  Future<void> signInAsGuest() => _persist(
-    const AuthSession(
-      name: 'Guest dev',
-      email: 'guest@local.device',
-      guest: true,
-    ),
-  );
+  Future<void> signIn({required String email, required String password}) async {
+    await SupabaseConfig.client.auth.signInWithPassword(
+      email: email,
+      password: password,
+    );
+    // Router redirect follows the onAuthStateChange listener above.
+  }
 
-  Future<void> _persist(AuthSession session) async {
-    final prefs = ref.read(sharedPrefsProvider);
-    await prefs.setString('auth.email', session.email);
-    await prefs.setString('auth.name', session.name);
-    await prefs.setBool('auth.guest', session.guest);
-    state = session;
+  Future<bool> signUp({
+    required String email,
+    required String password,
+    required String name,
+  }) async {
+    final response = await SupabaseConfig.client.auth.signUp(
+      email: email,
+      password: password,
+      data: {'name': name},
+    );
+    // Returns false when the project requires email confirmation — the UI
+    // then asks the user to verify and switch to sign-in.
+    return response.session != null;
   }
 
   Future<void> signOut() async {
-    final prefs = ref.read(sharedPrefsProvider);
-    await prefs.remove('auth.email');
-    await prefs.remove('auth.name');
-    await prefs.remove('auth.guest');
-    state = null;
+    if (!SupabaseConfig.enabled) return;
+    await SupabaseConfig.client.auth.signOut();
   }
 }
 

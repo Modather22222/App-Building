@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'data/providers.dart';
+import 'data/supabase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +23,13 @@ Future<void> main() async {
     // ignore: invalid_use_of_visible_for_testing_member
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
+  }
+
+  try {
+    await SupabaseConfig.init();
+  } catch (e) {
+    // Without backend wiring the app still opens; sign-in will explain why.
+    debugPrint('Supabase init failed ($e) — running backend-less');
   }
 
   runApp(

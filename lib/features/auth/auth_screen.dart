@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/providers.dart';
 
@@ -37,21 +38,77 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (!_formKey.currentState!.validate() || _busy) return;
     setState(() => _busy = true);
     try {
-      await Future<void>.delayed(const Duration(milliseconds: 350));
       final auth = ref.read(authProvider.notifier);
       if (_mode == _AuthMode.signIn) {
-        await auth.signIn(email: _emailController.text.trim());
-      } else {
         await auth.signIn(
           email: _emailController.text.trim(),
-          name: _nameController.text.trim(),
+          password: _passwordController.text,
         );
+      } else {
+        final confirmed = await auth.signUp(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          name: _nameController.text.trim().isNotEmpty
+              ? _nameController.text.trim()
+              : _emailController.text.trim().split('@').first,
+        );
+        if (!confirmed && mounted) {
+          // Project requires email confirmation before the session exists.
+          setState(() => _mode = _AuthMode.signIn);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Account created! Check your inbox to confirm your email, '
+                'then sign in.',
+              ),
+            ),
+          );
+          return;
+        }
       }
       HapticFeedback.mediumImpact();
       // Redirect to /chats happens in the router once the session exists.
+    } on AuthApiException catch (e) {
+      HapticFeedback.selectionClick();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_friendly(e.message))),
+        );
+      }
+    } catch (_) {
+      HapticFeedback.selectionClick();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not reach the account service. Check the connection and '
+              'try again.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  String _friendly(String? message) {
+    final m = (message ?? '').toLowerCase();
+    if (m.contains('invalid login credentials')) {
+      return 'Wrong email or password.';
+    }
+    if (m.contains('already registered')) {
+      return 'This email already has an account — try signing in.';
+    }
+    if (m.contains('password')) {
+      return 'Password is too weak. Use at least 6 characters.';
+    }
+    if (m.contains('rate limit')) {
+      return 'Too many attempts. Wait a minute and try again.';
+    }
+    return message?.isNotEmpty == true
+        ? message!
+        : 'Sign-in failed. Try again in a moment.';
   }
 
   @override
@@ -183,17 +240,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         ),
                 ),
               ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _busy
-                    ? null
-                    : () => ref.read(authProvider.notifier).signInAsGuest(),
-                child: const Text('Continue as guest'),
-              ),
               const SizedBox(height: 24),
               Text(
-                'MVP note: sign-in runs locally for now. Backend auth lands in '
-                'Phase 2 and your account carries over.',
+                'Email + password. Your account, chats and apps carry across '
+                'installs and devices.',
                 textAlign: TextAlign.center,
                 style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
               ),

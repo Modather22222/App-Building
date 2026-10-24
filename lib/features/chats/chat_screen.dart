@@ -33,19 +33,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final messages = ref.read(messagesProvider(widget.threadId));
-      if (messages.isEmpty) {
+      // Messages load persisted turns; a brand-new (or offline) thread gets
+      // the agent greeting seeded locally — never persisted.
+      unawaited(
         ref
             .read(messagesProvider(widget.threadId).notifier)
-            .add(
-              ChatMessage(
-                id: 'welcome-${widget.threadId}',
-                role: ChatRole.assistant,
-                text: MockChatService.greeting,
-                at: DateTime.now(),
-              ),
-            );
-      }
+            .bootstrap(),
+      );
     });
   }
 

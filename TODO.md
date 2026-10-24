@@ -62,10 +62,16 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 
 ## Phase 2 — Backend & real persistence
 
-- [ ] Choose backend (lean pick: Supabase — auth + Postgres + storage)
-- [ ] Swap mock auth for real email/OTP auth; keep guest mode dev-only
-- [ ] Database schema: users, chats, messages, projects, build_runs, token_ledger (build/edit credits), queue_state
-- [ ] Persist chats/projects server-side; merge local session
+- [x] Choose backend (lean pick: Supabase — auth + Postgres + storage) — project ref `loeaiuktjmhxeoxpyqjl`,
+      wired into `opencode.json` (remote MCP); publishable key in GitHub secret `SUPABASE_ANON_KEY`
+- [x] Swap mock auth for **email + password** (user decision: no guest mode) — `AuthState` now driven by
+      Supabase sessions (`onAuthStateChange`), sign-up detects email-confirmation requirement
+- [x] Database schema slice 1: profiles (+ auto-create trigger in private schema), chats, messages — RLS
+      owner-only; billing columns locked (table-level revoke, then `GRANT UPDATE (display_name)`),
+      bootstrap `rls_auto_enable()` revoked from PUBLIC; corrective migration `phase2_security_lockdown`
+- [~] Persist chats server-side (user turns + final assistant turns mirrored; streaming/plan/live state
+      stays local) — bootstraps from DB with in-memory degrade; projects/build rows land in the next slice
+      with the pipeline (Phase 3/4)
 - [ ] Billing: Stripe subscriptions (Starter/Pro/Scale) + refill packs; enforce via token counters
 - [ ] Plan enforcement: app slots, clean-build tokens, edit tokens (runners documented in Phase 0)
 
