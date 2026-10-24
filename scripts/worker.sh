@@ -43,10 +43,12 @@ mark() { MARKERS["$1"]="$(now)"; }                      # stage started
 stage_end() { MARKERS["${1}_done"]="$(now)"; }          # stage completed
 
 markers_json() {
+  # Keys are fixed enum names, values are ISO timestamps from date(1) —
+  # plain printf assembly is deterministic; jq framing bugs twice bit us.
   local out="{" first=1
   for k in "${!MARKERS[@]}"; do
     [[ $first -eq 1 ]] || out+=","
-    out+="$(jq -n --arg k "$k" --arg v "${MARKERS[$k]}" '{($k): $v}')"
+    out+="\"${k}\":\"${MARKERS[$k]}\""
     first=0
   done
   echo "${out}}"
