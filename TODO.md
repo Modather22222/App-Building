@@ -46,14 +46,17 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 ### App quality
 - [x] `flutter analyze` clean (0 issues)
 - [x] Unit test for theme semantics passing
-- [~] Real device smoke test on Android (release APK from `latest-build` release)
-  - First installable attempt hit a **launch white screen**: Flutter's Gradle plugin force-enables R8
-    minification for release builds; shared_preferences_android ships no consumer-rules.pro, so R8
-    renamed plugin methods that pigeon's dispatcher resolves reflectively → NoSuchMethodError on the
-    first `SharedPreferences.getInstance()` in main() → app never reached first frame. Verified by
+- [x] Real device smoke test on Android (user-verified, locally built APK of a70f107 — all flows work)
+  - Launch white-screen incident (resolved): Flutter's Gradle plugin force-enables R8 minification for
+    release builds; shared_preferences_android ships no consumer-rules.pro, so R8 renamed plugin methods
+    that pigeon's dispatcher resolves reflectively → NoSuchMethodError on the first
+    `SharedPreferences.getInstance()` in main() → app never reached first frame. Verified via
     dex-string analysis of the CI APK (legacy plugin class stripped) + logcat. Fix: `isMinifyEnabled =
     false` in release buildType + defensive try/catch fallback around prefs init (in-memory degrade).
     Re-enable shrinking only with proper -keep rules during Phase 5 hardening.
+  - NOTE: local builds and CI builds are both debug-signed but with DIFFERENT keystore keys — installing
+    the release APK over the locally built one will fail with "App not installed" unless the local one
+    is uninstalled first (expected, not a bug).
 - [ ] App icon + splash assets (default Flutter icon in place; replace before any public build)
 - [ ] Accessibility pass: Dynamic Type 135%, screen-reader labels, contrast check on status pills
 
