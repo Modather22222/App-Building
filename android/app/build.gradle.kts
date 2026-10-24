@@ -34,6 +34,16 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // The Flutter Gradle plugin force-enables R8 minification for release builds
+            // (FlutterPlugin.kt does this when the `shrink` property is absent).
+            // R8 renames the pigeon-generated methods of shared_preferences_android, whose
+            // dispatcher invokes them reflectively -> NoSuchMethodError at first
+            // SharedPreferences.getInstance() call -> permanent white screen on launch
+            // (observed on MIUI/Android 15 with shared_preferences 2.5.6 / android impl 2.5.1).
+            // The plugin ships no consumer-rules.pro, so until proper -keep rules are added
+            // (Phase 5 hardening), shrink must stay off. Costs ~2-3 MB of dex.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
