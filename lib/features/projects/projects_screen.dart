@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/tokens.dart';
 import '../../data/models.dart';
+import '../../data/supabase_config.dart';
 import 'projects_providers.dart';
 
 class ProjectsScreen extends ConsumerWidget {
@@ -72,7 +73,9 @@ class _ProjectRow extends ConsumerWidget {
                 context.push('/project/${project.id}');
               },
             ),
-            if (project.isActive)
+            // Simulation is available only in backend-less mode — with real
+            // builds the failure path belongs to the factory, not the UI.
+            if (project.isActive && !SupabaseConfig.enabled)
               ListTile(
                 leading: const Icon(Icons.bug_report_outlined),
                 title: const Text('Simulate build failure (dev)'),

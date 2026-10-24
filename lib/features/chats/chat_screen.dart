@@ -121,9 +121,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _startBuild(ChatMessage message) {
     if (message.planName == null || message.actionUsed) return;
     HapticFeedback.mediumImpact();
+    // The build prompt is the user request that produced this plan — find the
+    // nearest preceding user turn so the factory generates what was asked.
+    String prompt = '';
+    for (final m in ref.read(messagesProvider(widget.threadId)).reversed) {
+      if (m.role == ChatRole.user) {
+        prompt = m.text;
+        break;
+      }
+    }
     final projectId = ref
         .read(projectsProvider.notifier)
-        .create(name: message.planName!, summary: message.planSummary ?? '');
+        .create(
+          name: message.planName!,
+          summary: message.planSummary ?? '',
+          prompt: prompt,
+        );
     _messages.markActionUsed(message.id);
     context.push('/project/$projectId');
   }

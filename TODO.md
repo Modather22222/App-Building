@@ -69,20 +69,27 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 - [x] Database schema slice 1: profiles (+ auto-create trigger in private schema), chats, messages — RLS
       owner-only; billing columns locked (table-level revoke, then `GRANT UPDATE (display_name)`),
       bootstrap `rls_auto_enable()` revoked from PUBLIC; corrective migration `phase2_security_lockdown`
-- [~] Persist chats server-side (user turns + final assistant turns mirrored; streaming/plan/live state
+- [x] Persist chats server-side (user turns + final assistant turns mirrored; streaming/plan/live state
       stays local) — bootstraps from DB with in-memory degrade; projects/build rows land in the next slice
-      with the pipeline (Phase 3/4)
+      with the pipeline (Phase 3/4). **Device-verified 2026-10-25: signup → chat → uninstall + reinstall →
+      history restored**
 - [ ] Billing: Stripe subscriptions (Starter/Pro/Scale) + refill packs; enforce via token counters
 - [ ] Plan enforcement: app slots, clean-build tokens, edit tokens (runners documented in Phase 0)
 
 ## Phase 3 — Codegen pipeline (OpenCode agent)
 
-- [ ] Per-build repo creation via GitHub API (naming: `af-<user>-<slug>-<id>`)
-- [ ] OpenCode headless run with product prompt templates → full Flutter project files
+- [x] Projects schema slice (`phase3_projects` migration + RLS all-own) — TEXT id, worker-owned
+      repo/apk_url/error columns, `stage_times` jsonb feeding the timeline
+- [x] Cloud codegen runner: `factory-worker.yml` + `scripts/worker.sh` — opencode headless generates
+      sources only; `templates/app/build.yml` scaffolds Android (flutter create) + baked known-good
+      fixes; private repo `af-<slug>-<id>` per app; poll loop flips statuses; ERR-trap → failed+error
+- [x] `request-build` edge function deployed (verify_jwt on; ownership/ready checks e2e-verified)
+- [~] Live pipeline verification — **waiting on 2 secrets**: GitHub `OPENCODE_API_KEY` +
+      `SUPABASE_SERVICE_ROLE_KEY`; then first real end-to-end build
 - [ ] Spec refinement loop in chat (agent proposes plan → user confirms → edits tracked as edit Tokens)
-- [ ] Push code to repo; commit generated code (no repo-long-lived secrets)
-- [ ] Structured progress events → backend → app (replace the simulation timers)
-- [ ] Artifact conventions: APK path + versioning known to the CI workflow
+- [ ] Plan/token meters server-side (free-plan app count gate; per-project token ledger)
+- [ ].Queue watchdog: rows stuck in generating > 30 min get flagged/dead-lettered
+- [ ] Fine-grained PAT replaces the repo-wide `FACTORY_GH_PAT` (least privilege)
 
 ## Phase 4 — GitHub Actions build & delivery
 

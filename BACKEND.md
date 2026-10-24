@@ -1,8 +1,7 @@
 # BACKEND.md — Phase 2 (Supabase)
 
-Status: **design draft** — schema applied via Supabase MCP after auth link. Project ref:
-`loeaiuktjmhxeoxpyqjl` (configured in `opencode.json` → remote MCP, features: docs, account, database,
-debugging, development, functions, branching).
+Status: **phase 2 slice 1 shipped + device-verified; phase 3 slice 1 (real build pipeline) wired**.
+Project ref: `loeaiuktjmhxeoxpyqjl` (remote MCP in `opencode.json`).
 
 ## Goals
 
@@ -63,6 +62,62 @@ size) land in the NEXT slice alongside the real pipeline (Phase 3/4), so the v1 
 - Every table: `authenticated` users get SELECT/INSERT/UPDATE (and DELETE for chats+projects) strictly
   where `user_id = auth.uid()`.
 - `anon` role: zero policies → anonymous REST reads return 200 with **0 rows** (e2e-verified).
+
+# Phase 3 slice 1 — the real build pipeline
+
+## Flow
+
+```
+"Build this app" (chat)
+  → projectsProvider.create()  : projects row (status generating, stage_times seeded)
+  → edge function request-build: JWT-verified, row-ownership check, dispatches factory-worker.yml
+  → GitHub Actions worker      : opencode codegen → private repo af-<slug>-<id> → dispatch build.yml → poll
+  → worker flips row status    : generating → pushing → queued → building → ready + apk_url
+  → app polls (12 s)           : timeline + Apps tab update; Download APK / Repo buttons go live
+```
+
+## projects table (migration `phase3_projects`)
+
+| column | type | notes |
+|---|---|---|
+| id | **text PK** | client-generated (`proj-…`, app owns insert) |
+| user_id | uuid FK profiles(id) | owner; RLS all-own |
+| name / prompt / summary | text | plan chunk + verbatim chat request |
+| status | text | generating/pushing/queued/building/ready/failed (check) |
+| repo / apk_url / error | text | **worker-owned** (service role writes; app freezes them) |
+| stage_times | jsonb | `{stage: iso, stage_done: iso……}` — app folds into timeline markers |
+| created_at / updated_at | timestamptz | |
+
+RLS: `projects_all_own` (authenticated). Anonymous reads → 200 with 0 rows (e2e-verified).
+
+## Worker (`scripts/worker.sh` + `.github/workflows/factory-worker.yml`)
+
+- One bash shell per build: ERR-trap writes `status=failed + error` back to Supabase on any fatal step.
+- Model: `opencode/glm-5.3-flash-free` by default (workflow_dispatch `model` input / `FACTORY_MODEL`
+  function secret override).
+- Generated repos contain ONLY agent-written sources (pubspec, lib/, test, README); the copied
+  `templates/app/build.yml` runs `flutter create --platforms android --org com.appfactory` to
+  scaffold gradle/manifest, then applies the known-good fixes (INTERNET permission, minify off for
+  the R8/shared_preferences incident) — the agent never writes gradle.
+- Build jobs run in the generated **private** repos → consume the 2,000 free Actions minutes/month
+  (≈10–15 min each ⇒ ceiling ~130 apps/month). Codegen runs on the public factory repo = free.
+
+## request-build edge function ( deployed, verify_jwt: on )
+
+JWT → auth.getUser → project ownership → (ready short-circuits) → GH dispatch.
+Needs a function secret **FACTORY_GH_PAT** until then callers get 503 "factory is not configured yet".
+
+## Factory repo secrets (GitHub)
+
+- `FACTORY_GH_PAT` — set 2026-10-25 (classic repo+workflow scopes)
+- `SUPABASE_SERVICE_ROLE_KEY` — **pending user** (dashboard → Settings → API → service_role)
+- `OPENCODE_API_KEY` — **pending user** (opencode account key)
+
+## E2E results (2026-10-25, all cleaned afterwards)
+
+password grant 200 · projects insert 201 · owner PATCH 204 · forged user_id insert **403** ·
+anon reads **0 rows** · edge fn: ready-short-circuit 200 ok/ready · fake JWT **401** gateway ·
+unknown project **404** · unconfigured factory **503** with clean message.
 - Data API exposure check after creation per skill note (`GRANT` if Data API didn't pick tables up).
 
 ## Client wiring

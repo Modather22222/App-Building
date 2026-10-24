@@ -1,0 +1,46 @@
+name: Factory worker
+
+# Executed when a user confirms "Build this app":
+#   - workflow_dispatch from the request-build edge function (project_id input)
+#   - repository_dispatch (build-requested) reserved for the Phase 4 queue
+#
+# Pipeline: read project row → opencode codegen → push private repo →
+# trigger its build.yml → poll → publish apk_url back to Supabase.
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: Supabase projects.id to build
+        required: true
+        type: string
+      model:
+        description: OpenCode model for codegen
+        required: false
+        type: string
+        default: opencode/glm-5.3-flash-free
+  repository_dispatch:
+    types: [build-requested]
+
+permissions:
+  contents: read
+
+jobs:
+  pipeline:
+    name: Codegen + ship to GitHub
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout factory repo (templates + worker)
+        uses: actions/checkout@v4
+
+      - name: Pipeline
+        env:
+          SUPABASE_URL: https://loeaiuktjmhxeoxpyqjl.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          FACTORY_GH_PAT: ${{ secrets.FACTORY_GH_PAT }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          PROJECT_ID: ${{ inputs.project_id || github.event.client_payload.project_id }}
+          MODEL: ${{ inputs.model || 'opencode/glm-5.3-flash-free' }}
+        run: bash scripts/worker.sh

@@ -2,11 +2,13 @@ enum ChatRole { user, assistant }
 
 class AuthSession {
   const AuthSession({
+    required this.id,
     required this.name,
     required this.email,
     this.guest = false,
   });
 
+  final String id;
   final String name;
   final String email;
   final bool guest;
@@ -70,8 +72,12 @@ class AppProject {
     required this.name,
     required this.summary,
     required this.createdAt,
+    this.prompt = '',
     this.stage = BuildStage.generating,
     this.failed = false,
+    this.repo,
+    this.apkUrl,
+    this.error,
     Map<BuildStage, DateTime>? stageStarted,
     Map<BuildStage, DateTime>? stageFinished,
   }) : stageStarted = stageStarted ?? {},
@@ -80,7 +86,11 @@ class AppProject {
   final String id;
   final String name;
   final String summary;
+  final String prompt;
   final DateTime createdAt;
+  final String? repo; // owner/name of the generated repo (from the factory)
+  final String? apkUrl; // release asset URL once the build lands
+  final String? error; // failure detail from the factory
   BuildStage stage;
   bool failed;
   final Map<BuildStage, DateTime> stageStarted;
@@ -100,6 +110,7 @@ class AppProject {
   AppProject copyWith({
     BuildStage? stage,
     bool? failed,
+    String? error,
     Map<BuildStage, DateTime>? stageStarted,
     Map<BuildStage, DateTime>? stageFinished,
   }) {
@@ -107,9 +118,13 @@ class AppProject {
       id: id,
       name: name,
       summary: summary,
+      prompt: prompt,
       createdAt: createdAt,
+      repo: repo,
+      apkUrl: apkUrl,
       stage: stage ?? this.stage,
       failed: failed ?? this.failed,
+      error: error ?? this.error,
       stageStarted: stageStarted ?? Map.of(this.stageStarted),
       stageFinished: stageFinished ?? Map.of(this.stageFinished),
     );

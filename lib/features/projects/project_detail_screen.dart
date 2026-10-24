@@ -39,6 +39,10 @@ class ProjectDetailScreen extends ConsumerWidget {
           _BuildTimeline(project: project),
           const SizedBox(height: AppTokens.gapLg),
           _BuildInfo(project: project),
+          if (project.failed && project.error != null) ...[
+            const SizedBox(height: AppTokens.gapMd),
+            _FailureCard(message: project.error!),
+          ],
         ],
       ),
     );
@@ -127,7 +131,11 @@ class _BuildTimeline extends StatelessWidget {
               ),
             const SizedBox(height: AppTokens.gapMd),
             Text(
-              'Demo pipeline — production builds run on GitHub Actions.',
+              project.repo != null
+                  ? 'Build runs on GitHub Actions in a private repo '
+                      'created for this app.'
+                  : 'The factory will create a private repo for this app on '
+                      'GitHub once the build begins.',
               style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
@@ -241,6 +249,48 @@ class _StageRow extends StatelessWidget {
 
 enum _StageState { pending, active, done, failed }
 
+class _FailureCard extends StatelessWidget {
+  const _FailureCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.gapLg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.error_outline_rounded, color: AppTokens.statusFailed),
+                const SizedBox(width: 10),
+                Text(
+                  'Factory report',
+                  style: text.titleSmall?.copyWith(
+                    color: AppTokens.statusFailed,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppTokens.gapSm),
+            SelectableText(
+              message,
+              style: text.bodySmall?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StageDot extends StatelessWidget {
   const _StageDot({required this.state, required this.accent});
 
@@ -290,11 +340,11 @@ class _BuildInfo extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
 
     final rows = <String, String>{
-      'Repository': 'github.com/tameemtech/${project.slug}',
+      'Repository': project.repo ?? 'assigned on build start',
       'Requested':
           '${shortDate(project.createdAt)} \u00b7 ${clockTime(project.createdAt)}',
       'Status': project.failed ? 'Failed' : project.stage.label,
-      'Artifact': '${project.slug}-release.apk',
+      'Artifact': project.apkUrl != null ? 'app-release.apk' : 'pending',
     };
 
     return Card(
@@ -401,11 +451,9 @@ class _StickyBar extends ConsumerWidget {
                 if (project.stage == BuildStage.ready && !project.failed) ...[
                   const SizedBox(width: AppTokens.gapSm),
                   OutlinedButton(
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Repo link lands in Phase 3'),
-                      ),
-                    ),
+                    onPressed: project.repo == null
+                        ? null
+                        : () => _openRepo(context, project),
                     child: const Text('Repo'),
                   ),
                 ],
@@ -417,15 +465,42 @@ class _StickyBar extends ConsumerWidget {
     );
   }
 
+  Future<void> _openRepo(BuildContext context, AppProject project) async {
+    HapticFeedback.lightImpact();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final url = Uri.https('github.com', '/${project.repo}');
+      final launched = await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Could not open the repo link.')),
+        );
+      }
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not open the repo link.')),
+      );
+    }
+  }
+
   Future<void> _downloadApk(BuildContext context, AppProject project) async {
     HapticFeedback.mediumImpact();
     final messenger = ScaffoldMessenger.of(context);
-    final url = Uri.parse(
-      'https://appfactory.example/builds/${project.slug}/v1.0/${project.slug}-release.apk',
-    );
+    final apkUrl = project.apkUrl;
+    if (apkUrl == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('The APK link is still syncing — retry in a moment.'),
+        ),
+      );
+      return;
+    }
     try {
       final launched = await launchUrl(
-        url,
+        Uri.parse(apkUrl),
         mode: LaunchMode.externalApplication,
       );
       if (!launched) {
@@ -436,7 +511,7 @@ class _StickyBar extends ConsumerWidget {
     } catch (error) {
       messenger.showSnackBar(
         const SnackBar(
-          content: Text('Download links arrive with the delivery phase.'),
+          content: Text('Could not open the download link. Try again shortly.'),
         ),
       );
     }

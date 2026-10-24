@@ -50,7 +50,11 @@ class AuthState extends Notifier<AuthSession?> {
       _ => null,
     };
     final fallbackName = email.isEmpty ? 'Member' : email.split('@').first;
-    return AuthSession(name: metaName ?? fallbackName, email: email);
+    return AuthSession(
+      id: user.id,
+      name: metaName ?? fallbackName,
+      email: email,
+    );
   }
 
   Future<void> signIn({required String email, required String password}) async {
