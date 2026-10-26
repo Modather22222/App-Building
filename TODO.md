@@ -82,14 +82,16 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
       repo/apk_url/error columns, `stage_times` jsonb feeding the timeline
 - [x] Cloud codegen runner: `factory-worker.yml` + `scripts/worker.sh` — opencode headless generates
       sources only; `templates/app/build.yml` scaffolds Android (flutter create) + baked known-good
-      fixes; private repo `af-<slug>-<id>` per app; poll loop flips statuses; ERR-trap → failed+error
+      fixes; public repo `af-<slug>-<id>` per app; poll loop flips statuses; ERR-trap → failed+error
 - [x] `request-build` edge function deployed (verify_jwt on; ownership/ready checks e2e-verified)
-- [~] Live pipeline verification — **waiting on 2 secrets**: GitHub `OPENCODE_API_KEY` +
-      `SUPABASE_SERVICE_ROLE_KEY`; then first real end-to-end build
+- [~] Live pipeline verification — all 4 secrets set; chain exercised: codegen + repo creation +
+      dispatch + poll + failure reporting all proven (2 jq bugs + a dropped `>` in the manifest sed
+      fixed); generated-repo builds hit GitHub's billing gate → **all repos public now** (factory
+      repo was briefly private and every workflow startup-failed until reverted); waiting on the
+      first fully green run
 - [ ] Spec refinement loop in chat (agent proposes plan → user confirms → edits tracked as edit Tokens)
 - [ ] Plan/token meters server-side (free-plan app count gate; per-project token ledger)
-- [ ].Queue watchdog: rows stuck in generating > 30 min get flagged/dead-lettered
-- [ ] Fine-grained PAT replaces the repo-wide `FACTORY_GH_PAT` (least privilege)
+- [ ] Queue watchdog: rows stuck in generating > 30 min get flagged/dead-lettered
 
 ## Phase 4 — GitHub Actions build & delivery
 

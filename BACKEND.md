@@ -71,7 +71,7 @@ size) land in the NEXT slice alongside the real pipeline (Phase 3/4), so the v1 
 "Build this app" (chat)
   → projectsProvider.create()  : projects row (status generating, stage_times seeded)
   → edge function request-build: JWT-verified, row-ownership check, dispatches factory-worker.yml
-  → GitHub Actions worker      : opencode codegen → private repo af-<slug>-<id> → dispatch build.yml → poll
+  → GitHub Actions worker      : opencode codegen → public repo af-<slug>-<id> → dispatch build.yml → poll
   → worker flips row status    : generating → pushing → queued → building → ready + apk_url
   → app polls (12 s)           : timeline + Apps tab update; Download APK / Repo buttons go live
 ```
@@ -99,8 +99,14 @@ RLS: `projects_all_own` (authenticated). Anonymous reads → 200 with 0 rows (e2
   `templates/app/build.yml` runs `flutter create --platforms android --org com.appfactory` to
   scaffold gradle/manifest, then applies the known-good fixes (INTERNET permission, minify off for
   the R8/shared_preferences incident) — the agent never writes gradle.
-- Build jobs run in the generated **private** repos → consume the 2,000 free Actions minutes/month
-  (≈10–15 min each ⇒ ceiling ~130 apps/month). Codegen runs on the public factory repo = free.
+- **Smoke-test gate + self-repair (in the worker, free public minutes)**: generated code must pass
+  `flutter test` BEFORE pushing to the app repo; on failure the worker feeds the test output back
+  to the agent for up to 2 repair passes. Default model `opencode/deepseek-v4.1-flash-free`
+  (glm-5.3-flash-free shipped syntax slips); the model is a dispatch input / `FACTORY_MODEL` secret.
+- **ALL repos public** (2026-10-26 decision): private-repo Actions hit GitHub's billing gate on the
+  free plan ("job was not started — payments failed or spending limit") even with minutes available;
+  public repos are unlimited and free. The factory repo was also briefly flipped private and every
+  workflow startup-failed until reverted — public is the operating baseline now.
 
 ## request-build edge function ( deployed, verify_jwt: on )
 
