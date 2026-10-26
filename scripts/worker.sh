@@ -171,7 +171,7 @@ if gh repo view "${REPO_OWNER}/${REPO_NAME}" > /dev/null 2>&1; then
   git remote add origin "https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
   git push -q --force -u origin main
 else
-  gh repo create "${REPO_OWNER}/${REPO_NAME}" --private --source . --remote origin --push > /dev/null
+  gh repo create "${REPO_OWNER}/${REPO_NAME}" --public --source . --remote origin --push > /dev/null
 fi
 
 stage_end pushing
