@@ -89,8 +89,10 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
       fixed); generated-repo builds hit GitHub's billing gate → **all repos public now** (factory
       repo was briefly private and every workflow startup-failed until reverted); waiting on the
       first fully green run
-- [ ] Spec refinement loop in chat (agent proposes plan → user confirms → edits tracked as edit Tokens)
-- [ ] Plan/token meters server-side (free-plan app count gate; per-project token ledger)
+- [x] Spec refinement loop (slice: agent proposes plan → user confirms) — real agent chat delivers
+      this behavior now; edit-token tracking lands with billing
+- [x] Plan/token meters server-side — DB trigger quota (free 3 / pro 30 per month, friendly
+      refusal) + real profile card; owner bumped to `pro` for dev comfort
 - [ ] Queue watchdog: rows stuck in generating > 30 min get flagged/dead-lettered
 - [x] Real agent chat — `agent-chat` edge function + `AgentChatService` through the ReplyChunk
       contract; **live-verified 2026-10-26**: two-turn real conversation, plan proposal + parse ✓

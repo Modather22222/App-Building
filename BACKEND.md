@@ -125,6 +125,23 @@ password grant 200 · projects insert 201 · owner PATCH 204 · forged user_id i
 anon reads **0 rows** · edge fn: ready-short-circuit 200 ok/ready · fake JWT **401** gateway ·
 unknown project **404** · unconfigured factory **503** with clean message.
 
+# Phase 3 slice 3 — real plan meters + server-enforced quota
+
+- **Enforcement = DB trigger** (`phase3_project_quota` → `private.enforce_project_quota()`):
+  BEFORE INSERT on projects, counts the user's projects in the current calendar month vs the plan
+  map (free 3 / starter 10 / pro 30 / scale 100), refuses with a friendly RAISE that travels
+  verbatim through PostgREST (`400 P0001 "Monthly limit reached — …"`). Service-role contexts
+  bypass (uid null). Retry-friendly by design: quota is consumed at CREATION, dispatch has no gate.
+- **App**: `ProfileRepository` + `profileProvider` (watches authProvider, re-fetches on sign-in);
+  profile screen shows real plan + `Projects / month` meter derived from the watched projects list
+  (calendar month) — demo Starter/$19 card removed.
+- **Flow**: `create()` inserts first; on `ProjectLimitReached` the project renders as failed with
+  the verbatim limit message and no dispatch; on offline degrade → failed with retry hint.
+  `retry()` re-inserts (duplicate-key 23505 tolerated), resets worker columns, re-dispatches.
+- Owner account bumped to plan=pro while billing lands (2026-10-26).
+- E2E verified: 4th insert as free user → 400 + message; delete-one-and-retry semantics correct;
+  all test rows cleaned.
+
 # Phase 3 slice 2 — real agent chat (agent-chat edge function)
 
 The planning conversation is now a real LLM; "Build this app" appears when the
@@ -135,7 +152,7 @@ chat screen _send()
   → history built from visible turns (greeting + streaming placeholder excluded)
   → SupabaseConfig.enabled ? AgentChatService : MockChatService   (backend-less fallback kept)
   → edge fn agent-chat: JWT → getUser → history sanitize (≤20 turns, 4k chars)
-      → zen chat completions (default deepseek-v4.1-flash-free, 60 s timeout)
+      → zen chat completions (default glm-5.3-flash paid, 60 s timeout)
       → parses trailing "PLAN: <name> | <summary>" line → {reply, plan}
   → app replays through the SAME ReplyChunk contract (TextChunk + optional PlanChunk)
 ```
