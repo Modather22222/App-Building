@@ -1,3 +1,5 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'supabase_config.dart';
 
 /// Thin, best-effort Supabase-backed projects store.
@@ -5,6 +7,14 @@ import 'supabase_config.dart';
 /// Mirrors [ChatRepository]: every call degrades via [ProjectStoreOffline]
 /// and providers keep working from memory (`never brick the app`).
 class ProjectStoreOffline implements Exception {}
+
+/// The DB quota trigger (private.enforce_project_quota) refused the insert —
+/// the message text travels through PostgREST and is shown verbatim in UI.
+class ProjectLimitReached implements Exception {
+  const ProjectLimitReached(this.message);
+
+  final String message;
+}
 
 class ProjectRepository {
   const ProjectRepository();
@@ -30,6 +40,11 @@ class ProjectRepository {
         'created_at': at,
         'updated_at': at,
       });
+    } on PostgrestException catch (e) {
+      if (e.message.contains('Monthly limit reached')) {
+        throw ProjectLimitReached(e.message);
+      }
+      throw ProjectStoreOffline();
     } catch (_) {
       throw ProjectStoreOffline();
     }

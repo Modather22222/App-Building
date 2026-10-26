@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
+import 'profile_repository.dart';
 import 'supabase_config.dart';
 
 /// Overridden in main() with the real [SharedPreferences] instance.
@@ -87,6 +88,31 @@ class AuthState extends Notifier<AuthSession?> {
 }
 
 final authProvider = NotifierProvider<AuthState, AuthSession?>(AuthState.new);
+
+class ProfileState extends Notifier<ProfileRow?> {
+  @override
+  ProfileRow? build() {
+    // Re-fetches on every auth change (sign-in / sign-out / account switch).
+    final session = ref.watch(authProvider);
+    if (session == null || !SupabaseConfig.enabled) return null;
+    unawaited(_load());
+    return null;
+  }
+
+  Future<void> _load() async {
+    final row = await ref.read(profileRepositoryProvider)?.fetch();
+    if (row != null) state = row;
+  }
+}
+
+final profileRepositoryProvider = Provider<ProfileRepository?>((ref) {
+  if (!SupabaseConfig.enabled) return null;
+  return const ProfileRepository();
+});
+
+final profileProvider = NotifierProvider<ProfileState, ProfileRow?>(
+  ProfileState.new,
+);
 
 class ThemeModeState extends Notifier<ThemeMode> {
   @override

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/tokens.dart';
+import '../../data/models.dart';
+import '../../data/profile_repository.dart';
 import '../../data/providers.dart';
 import '../projects/projects_providers.dart';
 
@@ -57,7 +59,7 @@ class ProfileScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: AppTokens.sectionGap),
-          _PlanCard(projectsUsed: projects.length),
+          _PlanCard(projectsThisMonth: _usedThisCycle(projects)),
           const SizedBox(height: AppTokens.sectionGap),
           _sectionLabel('SETTINGS', context),
           const SizedBox(height: AppTokens.gapSm),
@@ -125,6 +127,16 @@ class ProfileScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  int _usedThisCycle(List<AppProject> projects) {
+    final now = DateTime.now();
+    final monthStart = DateTime(now.year, now.month);
+    var used = 0;
+    for (final p in projects) {
+      if (p.createdAt.isAfter(monthStart)) used++;
+    }
+    return used;
   }
 
   String _initials(String name) {
@@ -240,15 +252,25 @@ class _NotificationsTileState extends State<_NotificationsTile> {
   }
 }
 
-class _PlanCard extends StatelessWidget {
-  const _PlanCard({required this.projectsUsed});
+class _PlanCard extends ConsumerWidget {
+  const _PlanCard({required this.projectsThisMonth});
 
-  final int projectsUsed;
+  final int projectsThisMonth;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+    final session = ref.watch(authProvider);
+    final backendProfile = ref.watch(profileProvider);
+
+    final planName = session == null
+        ? 'Free'
+        : (backendProfile?.plan ?? 'free') == 'free'
+            ? 'Free'
+            : (backendProfile!.plan[0].toUpperCase() + backendProfile.plan.substring(1));
+    final limit = PlanLimits.of(session == null ? 'free' : backendProfile?.plan ?? 'free');
+    final used = projectsThisMonth.clamp(0, limit);
 
     return Card(
       child: Padding(
@@ -268,14 +290,12 @@ class _PlanCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text('Starter', style: text.titleLarge),
+                Text(planName, style: text.titleLarge),
                 const Spacer(),
                 Text(
-                  '\$19',
-                  style: text.titleLarge?.copyWith(color: colors.primary),
-                ),
-                Text(
-                  ' / mo \u00b7 2 app slots',
+                  session == null
+                      ? 'local device'
+                      : 'built on GitHub Actions',
                   style: text.bodySmall?.copyWith(
                     color: colors.onSurfaceVariant,
                   ),
@@ -283,15 +303,7 @@ class _PlanCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppTokens.gapLg),
-            _Meter(
-              label: 'App slots',
-              used: projectsUsed.clamp(0, 2),
-              total: 2,
-            ),
-            const SizedBox(height: AppTokens.gapMd),
-            _Meter(label: 'Clean builds / month', used: 0, total: 5),
-            const SizedBox(height: AppTokens.gapMd),
-            _Meter(label: 'Feature edits / month', used: 0, total: 15),
+            _Meter(label: 'Projects / month', used: used, total: limit),
             const SizedBox(height: AppTokens.gapMd),
             FilledButton.tonal(
               onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
@@ -303,7 +315,8 @@ class _PlanCard extends StatelessWidget {
             ),
             const SizedBox(height: AppTokens.gapSm),
             Text(
-              'Demo data \u2014 live usage metering goes live with the backend.',
+              'Live usage — server-derived, resets each calendar month. '
+              'The factory enforces this limit server-side.',
               style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],

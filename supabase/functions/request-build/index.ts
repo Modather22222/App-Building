@@ -2,7 +2,8 @@
 //
 // The app calls this when the user confirms "Build this app" (or retries a
 // failed project). It validates the caller's JWT, checks the project row
-// belongs to them, then dispatches factory-worker.yml on the factory repo.
+// belongs to them, enforces the plan's monthly build limit, then dispatches
+// factory-worker.yml on the factory repo.
 //
 // Secrets (set in Supabase function secrets):
 //   FACTORY_GH_PAT   — classic PAT with repo+workflow scope, for dispatching
@@ -14,7 +15,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const FACTORY_REPO = "Modather22222/App-Building";
 const WORKFLOW = "factory-worker.yml";
-const DEFAULT_MODEL = "opencode/glm-5.3-flash-free";
+const DEFAULT_MODEL = "glm-5.3-flash";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -77,6 +78,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: true, already: "ready" }, 200);
   }
 
+  // NOTE: plan quota is enforced at INSERT time by the DB trigger
+  // private.enforce_project_quota() — unforgeable and retry-friendly.
+  // This function only owns auth, ownership, and dispatch.
+
   const pat = Deno.env.get("FACTORY_GH_PAT");
   if (!pat) {
     return json(
@@ -111,6 +116,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // 204-emptied dispatch — the row flips through statuses as the worker runs.
+  // 202 — the row flips through statuses as the worker runs.
   return json({ ok: true, model }, 202);
 });

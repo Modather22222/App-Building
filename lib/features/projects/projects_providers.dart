@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models.dart';
 import '../../data/project_repository.dart';
@@ -178,25 +179,45 @@ class ProjectsState extends Notifier<List<AppProject>> {
     final repo = ref.read(projectRepositoryProvider);
     final uid = _currentUserId();
     if (repo != null && uid != null) {
-      unawaited(() async {
-        try {
-          await repo.insertProject(
-            id: id,
-            userId: uid,
-            name: name,
-            prompt: prompt,
-            summary: summary,
-            createdAt: now,
-          );
-        } catch (_) {
-          // Degrade: project only exists in memory this session.
-        }
-      }());
-      unawaited(_requestBuild(id));
+      unawaited(_persistAndDispatch(project, repo, uid));
     } else {
       _scheduleNext(id, 0);
     }
     return id;
+  }
+
+  /// Insert first, dispatch only on success. The DB quota trigger can refuse
+  /// the insert — that message becomes the project's failure card, no dispatch.
+  Future<void> _persistAndDispatch(
+    AppProject project,
+    ProjectRepository repo,
+    String uid,
+  ) async {
+    try {
+      await repo.insertProject(
+        id: project.id,
+        userId: uid,
+        name: project.name,
+        prompt: project.prompt,
+        summary: project.summary,
+        createdAt: project.createdAt,
+      );
+    } on ProjectLimitReached catch (e) {
+      _applyError(project.id, e.message);
+      _markFailed(project.id);
+      return;
+    } catch (_) {
+      _applyError(project.id, 'Could not reach the factory — retry below.');
+      _markFailed(project.id);
+      return;
+    }
+    await _requestBuild(project.id);
+  }
+
+  void _markFailed(String id) {
+    state = [
+      for (final p in state) p.id == id ? p.copyWith(failed: true) : p,
+    ];
   }
 
   void retry(String id) {
@@ -215,18 +236,53 @@ class ProjectsState extends Notifier<List<AppProject>> {
             : p,
     ];
     final repo = ref.read(projectRepositoryProvider);
-    if (repo != null) {
-      unawaited(() async {
-        try {
-          await repo.resetForRetry(id: id, at: now);
-        } catch (_) {
-          // Degrade: row stays as-is server-side.
-        }
-      }());
-      unawaited(_requestBuild(id));
+    final uid = _currentUserId();
+    if (repo != null && uid != null) {
+      unawaited(_retryDispatch(id, repo, uid));
     } else {
       _scheduleNext(id, 0);
     }
+  }
+
+  /// Retry: make sure a row exists (the original insert may have degraded),
+  /// tolerate the duplicate-key case, reset worker-owned columns, dispatch.
+  Future<void> _retryDispatch(
+    String id,
+    ProjectRepository repo,
+    String uid,
+  ) async {
+    final current = _byId(id);
+    if (current == null) return;
+    try {
+      await repo.insertProject(
+        id: id,
+        userId: uid,
+        name: current.name,
+        prompt: current.prompt,
+        summary: current.summary,
+        createdAt: current.createdAt,
+      );
+    } on PostgrestException catch (e) {
+      if (e.code != '23505') {
+        // Not a duplicate-key case: surface and stop.
+        _applyError(id, 'Could not reach the factory — retry again below.');
+        _markFailed(id);
+        return;
+      }
+      // Row already exists server-side — expected on retries; continue.
+    } on ProjectLimitReached catch (e) {
+      _applyError(id, e.message);
+      _markFailed(id);
+      return;
+    } catch (_) {
+      // Degrade: try dispatch anyway — the edge fn validates existence.
+    }
+    try {
+      await repo.resetForRetry(id: id, at: DateTime.now());
+    } catch (_) {
+      // Row-level reset failed (row may not exist) — dispatch regardless.
+    }
+    await _requestBuild(id);
   }
 
   void fail(String id) {
