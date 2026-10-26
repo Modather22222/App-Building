@@ -1,7 +1,9 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
-import '../mock/mock_chat_service.dart';
 import '../supabase_config.dart';
+import '../mock/mock_chat_service.dart';
 
 /// One prior turn of the conversation, oldest → newest, INCLUDING the message
 /// that was just sent.
@@ -23,43 +25,79 @@ class AgentChatException implements Exception {
 /// chat UI already consumes — TextChunk for the reply, PlanChunk when the
 /// agent proposes a build plan.
 ///
-/// Throws [AgentChatException] on failure so the screen can show the exact
-/// server message (missing key, rate limit, model error...).
+/// Uses a raw HttpClient instead of functions.invoke because the official
+/// client THROWS on non-200 responses, which flattens every server message
+/// (quota limits, configuration errors) into a generic network failure.
+/// Here every status/body is parsed and surfaced verbatim.
 class AgentChatService {
   const AgentChatService._();
 
-  static Stream<ReplyChunk> reply({required List<AgentTurn> history}) async* {
-    final FunctionResponse res;
+  static Future<Map<String, dynamic>> _invoke(
+    Map<String, dynamic> body,
+  ) async {
+    final session = SupabaseConfig.client.auth.currentSession;
+    final token = session?.accessToken ?? '';
+    if (token.isEmpty) {
+      throw const AgentChatException('Your session expired — sign in again.');
+    }
+
+    final client = HttpClient();
     try {
-      res = await SupabaseConfig.client.functions
-          .invoke(
-            'agent-chat',
-            body: {
-              'history': [
-                for (final t in history)
-                  {'role': t.role, 'content': t.content},
-              ],
-            },
-          )
-          .timeout(const Duration(seconds: 90));
-    } catch (_) {
+      final request = await client
+          .postUrl(Uri.parse('${SupabaseConfig.url}/functions/v1/agent-chat'))
+          .timeout(const Duration(seconds: 15));
+      request.headers.set('apikey', SupabaseConfig.publishableKey);
+      request.headers.set('Authorization', 'Bearer $token');
+      request.headers.set('content-type', 'application/json');
+      request.add(utf8.encode(jsonEncode(body)));
+
+      final response = await request.close().timeout(
+        const Duration(seconds: 90),
+      );
+      final text = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 30));
+
+      Map<String, dynamic> payload;
+      try {
+        final decoded = jsonDecode(text);
+        payload =
+            decoded is Map<String, dynamic>
+                ? decoded
+                : <String, dynamic>{};
+      } catch (_) {
+        payload = <String, dynamic>{};
+      }
+
+      if (response.statusCode != 200) {
+        final message =
+            payload['error'] is String
+                ? payload['error'] as String
+                : 'Agent service error (${response.statusCode}).';
+        throw AgentChatException(message);
+      }
+      return payload;
+    } on TimeoutException {
+      throw const AgentChatException(
+        'The agent took too long to reply — try again in a moment.',
+      );
+    } on SocketException {
       throw const AgentChatException(
         'Could not reach the agent. Check the connection and try again.',
       );
+    } finally {
+      client.close();
     }
+  }
 
-    if (res.status != 200) {
-      final data = res.data;
-      final message = data is Map && data['error'] is String
-          ? data['error'] as String
-          : 'Agent service error (${res.status}).';
-      throw AgentChatException(message);
-    }
+  static Stream<ReplyChunk> reply({required List<AgentTurn> history}) async* {
+    final data = await _invoke({
+      'history': [
+        for (final t in history) {'role': t.role, 'content': t.content},
+      ],
+    });
 
-    final data = res.data;
-    if (data is! Map) {
-      throw const AgentChatException('Agent returned an unexpected payload.');
-    }
     yield TextChunk((data['reply'] as String?) ?? '');
     final plan = data['plan'];
     if (plan is Map) {
