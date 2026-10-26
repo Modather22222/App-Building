@@ -109,6 +109,42 @@ if [[ ! -f pubspec.yaml ]] || [[ ! -f lib/main.dart ]]; then
   fail "codegen incomplete — pubspec.yaml or lib/main.dart missing"
 fi
 
+# --- 2b. smoke-test gate + self-repair ------------------------------------------
+# Private repo build minutes are precious: verify the generated code compiles
+# and passes its own smoke test HERE (free public minutes), feeding failures
+# back to the model for up to 2 repair passes.
+
+flutter pub get > /dev/null 2>&1 || true
+REPAIRS=0
+while :; do
+  set +e
+  TEST_LOG=$(flutter test 2>&1)
+  TEST_STATUS=$?
+  set -e
+  if [[ "$TEST_STATUS" -eq 0 ]]; then
+    if [[ "$REPAIRS" -gt 0 ]]; then
+      echo "Repair pass $REPAIRS made the smoke test pass."
+    fi
+    break
+  fi
+  if [[ "$REPAIRS" -ge 2 ]]; then
+    echo "::group::last smoke-test failure (tail)"
+    printf '%s\n' "$TEST_LOG" | tail -n 80
+    echo "::endgroup::"
+    fail "generated code failed its smoke test after $REPAIRS repair passes"
+  fi
+  REPAIRS=$((REPAIRS + 1))
+  echo "::group::repair pass $REPAIRS"
+  jq -Rn --rawfile tmpl "$FACTORY_DIR/templates/app/repair-instructions.md" \
+    --arg failures "$TEST_LOG" \
+    '$tmpl | gsub("\\{\\{FAILURES\\}\\}"; $failures)' > repair.md
+  printf 'repair prompt: %s bytes\n' "$(wc -c < repair.md)"
+  OPENCODE_API_KEY="${OPENCODE_API_KEY:?OPENCODE_API_KEY secret missing on factory repo}" \
+    opencode run --model "$MODEL" "$(cat repair.md)" >> /tmp/opencode-agent.log 2>&1 ||
+    { tail -n 40 /tmp/opencode-agent.log; fail "repair pass $REPAIRS failed"; }
+  echo "::endgroup::"
+done
+
 stage_end generating
 
 # --- 3. wiring + repo push ------------------------------------------------------------
@@ -122,6 +158,7 @@ if grep -q "__SLUG__\|__DART__" .github/workflows/build.yml; then
   fail "template placeholder leak — slug substitution failed"
 fi
 
+rm -f request.md repair.md /tmp/opencode-agent.log 2> /dev/null || true
 git init -q -b main
 git config user.name "App Factory worker"
 git config user.email "workers@users.noreply.github.com"
