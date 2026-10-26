@@ -18,7 +18,7 @@ on:
         description: OpenCode model for codegen
         required: false
         type: string
-        default: opencode/deepseek-v4.1-flash-free
+        default: opencode/glm-5.3-flash
   repository_dispatch:
     types: [build-requested]
 
@@ -57,5 +57,5 @@ jobs:
           FACTORY_GH_PAT: ${{ secrets.FACTORY_GH_PAT }}
           REPO_OWNER: ${{ github.repository_owner }}
           PROJECT_ID: ${{ inputs.project_id || github.event.client_payload.project_id }}
-          MODEL: ${{ inputs.model || 'opencode/glm-5.3-flash-free' }}
+          MODEL: ${{ inputs.model || 'opencode/glm-5.3-flash' }}
         run: bash scripts/worker.sh
