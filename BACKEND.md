@@ -143,6 +143,19 @@ chat screen _send()
 - Function: `supabase/functions/agent-chat/index.ts` (verify_jwt on). Secret: **OPENCODE_ZEN_KEY**
   (dashboard function secrets — same place as FACTORY_GH_PAT). Optional override: FACTORY_CHAT_MODEL
   (bare zen id — the zen REST API takes bare ids; the opencode CLI takes `opencode/<id>`).
+
+### Model economics (2026-10-26 discovery)
+
+- OpenCode zen **free models are gated by an account-level free-usage pool** — drained, and EVERY
+  key on the account returns `429 FreeUsageLimitError` (new keys under the same account share it;
+  a Go subscription does NOT apply to raw REST calls — those need credit balance, `402` otherwise).
+- Operating default is therefore the **paid `glm-5.3-flash`** ($0.15/1M in, $0.50/1M out — chat turn
+  ≈ $0.0002, full app codegen ≈ $0.05–0.15), funded by credits on the key's account.
+  - GH secret `OPENCODE_API_KEY` + Supabase secret `OPENCODE_ZEN_KEY` = the funded key.
+  - Factory default `opencode/glm-5.3-flash` (commit 7d05424); chat default `glm-5.3-flash` (fn v6).
+- Free keys remain valid fallbacks once a new allowance cycle starts; the app surfaces quota errors
+  verbatim in chat now (raw HttpClient instead of functions.invoke, which flattens non-200 to a
+  generic throw).
 - Streaming feel comes from the existing streaming bubble; true SSE is a later upgrade.
 - Plan proposals are in-memory only (DB stores reply text; plan re-proposal after reinstall is
   acceptable for this slice).

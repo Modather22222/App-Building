@@ -92,9 +92,11 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 - [ ] Spec refinement loop in chat (agent proposes plan → user confirms → edits tracked as edit Tokens)
 - [ ] Plan/token meters server-side (free-plan app count gate; per-project token ledger)
 - [ ] Queue watchdog: rows stuck in generating > 30 min get flagged/dead-lettered
-- [~] Real agent chat — `agent-chat` edge function deployed (auth/paths e2e-verified) +
-      `AgentChatService` wired through the ReplyChunk contract with backend-less mock fallback;
-      live test pending `OPENCODE_ZEN_KEY` dashboard secret
+- [x] Real agent chat — `agent-chat` edge function + `AgentChatService` through the ReplyChunk
+      contract; **live-verified 2026-10-26**: two-turn real conversation, plan proposal + parse ✓
+      (3.7–5.3 s latency), backend-less mock fallback intact
+- [x] Model economics resolved: free pool is account-level (drained) → paid `glm-5.3-flash`
+      default on the funded key; error surfacing fixed (raw HttpClient — real reasons in chat)
 - [ ] True SSE streaming for chat replies (replace the wait-then-type feel)
 - [ ] Persist plan proposals (name/summary) on the message row so they survive reinstall
 
