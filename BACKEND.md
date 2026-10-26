@@ -124,6 +124,30 @@ Needs a function secret **FACTORY_GH_PAT** until then callers get 503 "factory i
 password grant 200 · projects insert 201 · owner PATCH 204 · forged user_id insert **403** ·
 anon reads **0 rows** · edge fn: ready-short-circuit 200 ok/ready · fake JWT **401** gateway ·
 unknown project **404** · unconfigured factory **503** with clean message.
+
+# Phase 3 slice 2 — real agent chat (agent-chat edge function)
+
+The planning conversation is now a real LLM; "Build this app" appears when the
+MODEL decides the request is concrete enough (not canned).
+
+```
+chat screen _send()
+  → history built from visible turns (greeting + streaming placeholder excluded)
+  → SupabaseConfig.enabled ? AgentChatService : MockChatService   (backend-less fallback kept)
+  → edge fn agent-chat: JWT → getUser → history sanitize (≤20 turns, 4k chars)
+      → zen chat completions (default deepseek-v4.1-flash-free, 60 s timeout)
+      → parses trailing "PLAN: <name> | <summary>" line → {reply, plan}
+  → app replays through the SAME ReplyChunk contract (TextChunk + optional PlanChunk)
+```
+
+- Function: `supabase/functions/agent-chat/index.ts` (verify_jwt on). Secret: **OPENCODE_ZEN_KEY**
+  (dashboard function secrets — same place as FACTORY_GH_PAT). Optional override: FACTORY_CHAT_MODEL
+  (bare zen id — the zen REST API takes bare ids; the opencode CLI takes `opencode/<id>`).
+- Streaming feel comes from the existing streaming bubble; true SSE is a later upgrade.
+- Plan proposals are in-memory only (DB stores reply text; plan re-proposal after reinstall is
+  acceptable for this slice).
+- Path e2e-verified (2026-10-26): valid JWT → 503 clean "not configured" (key pending),
+  fake token → 401, empty history → 400. Live LLM test pending OPENCODE_ZEN_KEY.
 - Data API exposure check after creation per skill note (`GRANT` if Data API didn't pick tables up).
 
 ## Client wiring

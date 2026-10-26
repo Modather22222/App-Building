@@ -8,8 +8,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/tokens.dart';
 import '../../core/utils/ids.dart';
+import '../../data/agent/agent_chat_service.dart';
 import '../../data/mock/mock_chat_service.dart';
 import '../../data/models.dart';
+import '../../data/supabase_config.dart';
 import '../projects/projects_providers.dart';
 import 'chats_providers.dart';
 
@@ -94,7 +96,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
     );
 
-    _sub = MockChatService.reply(text).listen(
+    // History for the real agent: every visible turn except the greeting and
+    // the streaming placeholder — includes the user message just added.
+    final history = <AgentTurn>[
+      for (final m in ref.read(messagesProvider(widget.threadId)))
+        if (m.id != replyId && !m.id.startsWith('welcome-'))
+          AgentTurn(
+            m.role == ChatRole.user ? 'user' : 'assistant',
+            m.text,
+          ),
+    ];
+
+    final stream = SupabaseConfig.enabled
+        ? AgentChatService.reply(history: history)
+        : MockChatService.reply(text);
+
+    _sub = stream.listen(
       (chunk) {
         switch (chunk) {
           case TextChunk(:final text):
@@ -110,7 +127,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       onError: (Object error) {
         _messages.setText(
           replyId,
-          'Something went wrong on my side. Try again in a moment.',
+          error is AgentChatException
+              ? error.message
+              : 'Something went wrong on my side. Try again in a moment.',
         );
         _messages.finishStreaming(replyId);
         _streamingReplyId = null;

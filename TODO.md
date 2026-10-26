@@ -92,6 +92,11 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 - [ ] Spec refinement loop in chat (agent proposes plan → user confirms → edits tracked as edit Tokens)
 - [ ] Plan/token meters server-side (free-plan app count gate; per-project token ledger)
 - [ ] Queue watchdog: rows stuck in generating > 30 min get flagged/dead-lettered
+- [~] Real agent chat — `agent-chat` edge function deployed (auth/paths e2e-verified) +
+      `AgentChatService` wired through the ReplyChunk contract with backend-less mock fallback;
+      live test pending `OPENCODE_ZEN_KEY` dashboard secret
+- [ ] True SSE streaming for chat replies (replace the wait-then-type feel)
+- [ ] Persist plan proposals (name/summary) on the message row so they survive reinstall
 
 ## Phase 4 — GitHub Actions build & delivery
 
