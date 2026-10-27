@@ -1,6 +1,9 @@
 # App Factory — build workflow for GENERATED apps (monorepo mode).
 # Lives in the app-factory-outputs repo. Each app = a folder under apps/.
-# Dispatched per build with the app_dir input; publishes a per-app release.
+# Dispatched per build with app_dir + dart_name inputs; publishes a per-app
+# release. IMPORTANT: this file must stay content-identical for every app —
+# per-app identity travels ONLY through dispatch inputs. Baking app-specific
+# values here made parallel pushes conflict on this shared file.
 
 name: Build APK
 
@@ -8,16 +11,21 @@ on:
   workflow_dispatch:
     inputs:
       app_dir:
-        description: Folder under apps/ to build (e.g. apps/proj-stress-01)
+        description: Folder under apps/ (e.g. apps/proj-burst-01)
         required: true
         type: string
+      dart_name:
+        description: Dart package name (drives applicationId uniqueness)
+        required: false
+        type: string
+        default: flutter_app
 
 permissions:
   contents: write
 
 jobs:
   build-apk:
-    name: Build APK ({{APP_DIR_LABEL}})
+    name: Build APK (${{ inputs.app_dir }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -44,7 +52,7 @@ jobs:
           # Generated projects contain only lib/ + pubspec.yaml + tests —
           # scaffold Android here so the agent never hand-writes gradle.
           if [ ! -d android ]; then
-            flutter create . --platforms android --org com.appfactory --project-name __DART__
+            flutter create . --platforms android --org com.appfactory --project-name "${{ inputs.dart_name }}"
           fi
           MAN=android/app/src/main/AndroidManifest.xml
           if ! grep -q 'android.permission.INTERNET' "$MAN"; then

@@ -145,14 +145,30 @@ jq -Rn --rawfile tmpl templates/app/codegen-instructions.md \
   > "$WORK/request.md"
 
 cd "$WORK"
-OPENCODE_API_KEY="${OPENCODE_API_KEY:?OPENCODE_API_KEY secret missing on factory repo}" \
-  opencode run --model "$MODEL" "$(cat request.md)" > /tmp/opencode-agent.log 2>&1 ||
-  { tail -n 60 /tmp/opencode-agent.log; fail "codegen step failed (see log above)"; }
+run_codegen() {
+  OPENCODE_API_KEY="${OPENCODE_API_KEY:?OPENCODE_API_KEY secret missing on factory repo}" \
+    opencode run --model "$MODEL" "$(cat request.md)" > /tmp/opencode-agent.log 2>&1
+}
+if ! run_codegen; then
+  tail -n 60 /tmp/opencode-agent.log
+  fail "codegen step failed (see log above)"
+fi
 
 if [[ ! -f pubspec.yaml ]] || [[ ! -f lib/main.dart ]]; then
-  printf '%s\n' "--- files produced ---"
-  find . -type f | head -40 | sed 's/^/  /'
-  fail "codegen incomplete — pubspec.yaml or lib/main.dart missing"
+  # The agent occasionally produces nothing usable. One fresh roll before
+  # giving up — a hung/incomplete first attempt is a roll of the dice, not a
+  # verdict on the prompt.
+  echo "codegen produced an incomplete project — one fresh retry"
+  find . -mindepth 1 -maxdepth 1 ! -name request.md -exec rm -rf {} +
+  if ! run_codegen; then
+    tail -n 60 /tmp/opencode-agent.log
+    fail "codegen retry failed (see log above)"
+  fi
+  if [[ ! -f pubspec.yaml ]] || [[ ! -f lib/main.dart ]]; then
+    printf '%s\n' "--- files produced ---"
+    find . -type f | head -40 | sed 's/^/  /'
+    fail "codegen incomplete after fresh retry — pubspec.yaml or lib/main.dart missing"
+  fi
 fi
 
 # --- 2b. smoke-test gate + self-repair ------------------------------------------
@@ -168,10 +184,17 @@ while :; do
   # fail() kills the run before any repair pass can happen.
   trap - ERR
   set +e
-  TEST_LOG=$(flutter test 2>&1)
+  # 15-min cap: a hung probe (network/pub stall) is infrastructure, not code —
+  # without this the worker waits until GitHub's 60-min job kill, the row goes
+  # stale, and only the watchdog sweep explains it (Unit Quiz, 2026-10-27).
+  TEST_LOG=$(timeout 900 flutter test 2>&1)
   TEST_STATUS=$?
   set -e
   trap 'fail "worker step failed at line $LINENO (see this run log)"' ERR
+  if [[ "$TEST_STATUS" -eq 124 ]]; then
+    printf '%s\n' "$TEST_LOG" | tail -n 30
+    fail "smoke probe hung >15 min (infrastructure stall, not code) — retry the build"
+  fi
   if [[ "$TEST_STATUS" -eq 0 ]]; then
     if [[ "$REPAIRS" -gt 0 ]]; then
       echo "Repair pass $REPAIRS made the smoke test pass."
@@ -247,12 +270,12 @@ mkdir -p "$MONO_APP"
 cp -a "$WORK"/. "$MONO_APP"/
 # The app's build workflow: one copy lives at the monorepo root; refresh it
 # on every push so template updates propagate with any app.
+# One IDENTICAL build.yml for every app — per-app identity travels ONLY as
+# dispatch inputs (app_dir, dart_name). Identical content means parallel
+# pushes never conflict on this shared file (baked __DART__ per app caused
+# rebase conflicts under bursts — Recipe Card, 2026-10-27).
 mkdir -p "${MONO}/.github/workflows"
-sed -e "s/__DART__/${DART_NAME}/g" -e "s|{{APP_DIR_LABEL}}|${APP_DIR}|g" \
-  "$FACTORY_DIR/templates/app/build.yml" > "${MONO}/.github/workflows/build.yml"
-if grep -q "__DART__\|{{APP_DIR_LABEL}}" "${MONO}/.github/workflows/build.yml"; then
-  fail "template placeholder leak — slug substitution failed"
-fi
+cp "$FACTORY_DIR/templates/app/build.yml" "${MONO}/.github/workflows/build.yml"
 
 # Push races under parallel workers → see mono_push above.
 mono_push() {
@@ -285,7 +308,7 @@ sb_patch "$(jq -nc --arg r "$BUILD_REPO" --argjson st "$(markers_json)" \
 
 # --- 4. dispatch build + poll (matched by our push SHA) -----------------------------------
 with_retry "build dispatch" gh workflow run build.yml -R "$BUILD_REPO" --ref main \
-  -f "app_dir=${APP_DIR}"
+  -f "app_dir=${APP_DIR}" -f "dart_name=${DART_NAME}"
 sleep 20
 
 BUILDING_MARKED=0
