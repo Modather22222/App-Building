@@ -102,7 +102,12 @@ if [[ ! "$SLUG" =~ ^[a-z0-9-]+$ ]] || [[ -z "$SLUG" ]]; then SLUG=flutter-app; f
 DART_NAME=$(printf '%s' "$SLUG" | sed -E 's/-+/_/g')
 if [[ "$DART_NAME" =~ ^[0-9] ]]; then DART_NAME="app${DART_NAME}"; fi
 SHORT_ID=$(printf '%s' "$PROJECT_ID" | tail -c 8 | tr '_' '-')
-REPO_NAME="af-${SLUG}-${SHORT_ID}"
+# Monorepo: ONE build repo for every generated app — per-app folders under
+# apps/ and per-app release tags. Sidesteps GitHub's repo-creation burst
+# limiter entirely and keeps the user's account clean.
+BUILD_REPO="${REPO_OWNER}/app-factory-outputs"
+APP_DIR="apps/${PROJECT_ID}"
+RELEASE_TAG="af-${PROJECT_ID}"
 
 # --- 2. codegen with opencode -------------------------------------------------------
 mark generating
@@ -175,49 +180,62 @@ done
 
 stage_end generating
 
-# --- 3. wiring + repo push ------------------------------------------------------------
+# --- 3. wire into the build monorepo ---------------------------------------------------
 mark pushing
 patch_state pushing
 
-mkdir -p .github/workflows
-sed -e "s/__SLUG__/${SLUG}/g" -e "s/__DART__/${DART_NAME}/g" \
-  "$FACTORY_DIR/templates/app/build.yml" > .github/workflows/build.yml
-if grep -q "__SLUG__\|__DART__" .github/workflows/build.yml; then
+rm -f request.md repair.md /tmp/opencode-agent.log 2> /dev/null || true
+export GH_TOKEN="$FACTORY_GH_PAT"
+gh auth setup-git > /dev/null 2>&1 || true
+
+# Clone (depth 1) the build monorepo, creating it on first ever use.
+if ! gh repo view "$BUILD_REPO" > /dev/null 2>&1; then
+  with_retry "monorepo create" gh repo create "$BUILD_REPO" --public > /dev/null
+  sleep 5
+fi
+MONO="$(mktemp -d)"
+with_retry "monorepo clone" git clone -q --depth 1 "https://github.com/${BUILD_REPO}.git" "$MONO"
+mkdir -p "${MONO}/apps"
+
+# Fresh generated tree into its app folder (retry overwrites cleanly).
+MONO_APP="${MONO}/${APP_DIR}"
+rm -rf "$MONO_APP"
+mkdir -p "$MONO_APP"
+cp -a "$WORK"/. "$MONO_APP"/
+# The app's build workflow: one copy lives at the monorepo root; refresh it
+# on every push so template updates propagate with any app.
+mkdir -p "${MONO}/.github/workflows"
+sed -e "s/__DART__/${DART_NAME}/g" -e "s|{{APP_DIR_LABEL}}|${APP_DIR}|g" \
+  "$FACTORY_DIR/templates/app/build.yml" > "${MONO}/.github/workflows/build.yml"
+if grep -q "__DART__\|{{APP_DIR_LABEL}}" "${MONO}/.github/workflows/build.yml"; then
   fail "template placeholder leak — slug substitution failed"
 fi
 
-rm -f request.md repair.md /tmp/opencode-agent.log 2> /dev/null || true
-git init -q -b main
+cd "$MONO"
 git config user.name "App Factory worker"
 git config user.email "workers@users.noreply.github.com"
 git add -A
-git commit -qm "Initial generated app (via App Factory)"
-export GH_TOKEN="$FACTORY_GH_PAT"
-gh auth setup-git > /dev/null 2>&1 || true
-if gh repo view "${REPO_OWNER}/${REPO_NAME}" > /dev/null 2>&1; then
-  # Retry of the same project: repo already exists — reuse and overwrite it.
-  git remote add origin "https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
-  with_retry "push" git push -q --force -u origin main
-else
-  with_retry "repo create" gh repo create "${REPO_OWNER}/${REPO_NAME}" \
-    --public --source . --remote origin --push > /dev/null
-fi
+git commit -qm "App Factory: ${APP_NAME} (${PROJECT_ID})"
+with_retry "monorepo push" git push -q origin main
+HEAD_SHA=$(git rev-parse HEAD)
 
 stage_end pushing
 mark queued
-sb_patch "$(jq -nc --arg r "${REPO_OWNER}/${REPO_NAME}" --argjson st "$(markers_json)" \
+sb_patch "$(jq -nc --arg r "$BUILD_REPO" --argjson st "$(markers_json)" \
   '{status:"queued", repo:$r, stage_times:$st}')"
 
-# --- 4. dispatch build + poll -----------------------------------------------------------
-with_retry "build dispatch" gh workflow run build.yml -R "${REPO_OWNER}/${REPO_NAME}" --ref main
+# --- 4. dispatch build + poll (matched by our push SHA) -----------------------------------
+with_retry "build dispatch" gh workflow run build.yml -R "$BUILD_REPO" --ref main \
+  -f "app_dir=${APP_DIR}"
 sleep 20
 
 BUILDING_MARKED=0
 FINAL_CONCLUSION=""
 FINAL_RUN_ID=""
 for _ in $(seq 1 80); do # 80 * 20s ≈ 27 min ceiling
-  RUN_JSON=$(gh run list -R "${REPO_OWNER}/${REPO_NAME}" --workflow build.yml --limit 1 \
-    --json status,conclusion,databaseId 2>/dev/null | jq -c '.[0] // empty') || true
+  RUN_JSON=$(gh run list -R "$BUILD_REPO" --workflow build.yml --limit 40 \
+    --json status,conclusion,databaseId,headSha 2>/dev/null \
+    | jq -c --arg sha "$HEAD_SHA" '[.[] | select(.headSha == $sha)][0] // empty') || true
   STATUS=$(jq -r '.status // ""' <<< "${RUN_JSON:-}")
   CONCLUSION=$(jq -r '.conclusion // ""' <<< "${RUN_JSON:-}")
   RUN_ID=$(jq -r '.databaseId // ""' <<< "${RUN_JSON:-}")
@@ -235,18 +253,18 @@ for _ in $(seq 1 80); do # 80 * 20s ≈ 27 min ceiling
 done
 
 if [[ -z "$FINAL_CONCLUSION" ]]; then
-  fail "build runner timed out (~27 min) — repo: ${REPO_OWNER}/${REPO_NAME}"
+  fail "build runner timed out (~27 min) — repo: ${BUILD_REPO}"
 fi
 if [[ "$FINAL_CONCLUSION" != "success" ]]; then
-  fail "APK build failed — see https://github.com/${REPO_OWNER}/${REPO_NAME}/actions/runs/${FINAL_RUN_ID:-unknown}"
+  fail "APK build failed — see https://github.com/${BUILD_REPO}/actions/runs/${FINAL_RUN_ID:-unknown}"
 fi
 
 # --- 5. asset url + ready ----------------------------------------------------------------
-APK_URL="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/latest-build/app-release.apk"
+APK_URL="https://github.com/${BUILD_REPO}/releases/download/${RELEASE_TAG}/app-release.apk"
 ASSET_OK=0
 for _ in $(seq 1 6); do
-  ASSET=$(gh api "repos/${REPO_OWNER}/${REPO_NAME}/releases" \
-    --jq '[.[] | select(.tag_name=="latest-build") | .assets[] | select(.name=="app-release.apk")] | length > 0' \
+  ASSET=$(gh api "repos/${BUILD_REPO}/releases" \
+    --jq "[.[] | select(.tag_name==\"${RELEASE_TAG}\") | .assets[] | select(.name==\"app-release.apk\")] | length > 0" \
     2>/dev/null) || true
   if [[ "$ASSET" == "true" ]]; then ASSET_OK=1; break; fi
   sleep 10
@@ -258,4 +276,4 @@ fi
 stage_end building
 sb_patch "$(jq -nc --arg u "$APK_URL" --argjson st "$(markers_json)" \
   '{status:"ready", apk_url:$u, error:null, stage_times:$st}')"
-echo "Shipped ${REPO_OWNER}/${REPO_NAME} → ${APK_URL}"
+echo "Shipped ${APP_NAME} → ${APK_URL}"
