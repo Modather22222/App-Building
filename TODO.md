@@ -105,7 +105,16 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 - [x] Stress-proven: 12 parallel builds 12/12 shipped → **monorepo** build repo
       (`app-factory-outputs`, per-app folder + per-app release tag) replaced per-app repos
 - [~] Multi-account build pool (`factory_accounts` + atomic LRU claim + worker self-seed):
-      3 accounts registered; 20-build soak in flight
+      **20-build soak: 17/20 shipped, TRUE cross-account distribution 9/4/4** (first-ever builds
+      on the two fresh accounts worked end-to-end: empty-repo first push, first dispatch,
+      first releases). 3 failures = 3 distinct mechanisms, all fixed:
+      - rebase conflict on shared build.yml (per-app __DART__ baked in) → build.yml now
+        content-identical, per-app identity travels as dispatch inputs (app_dir + dart_name;
+        dart_name keeps applicationId = com.appfactory.<dart> unique per app)
+      - agent produced an incomplete project, no retry → one fresh codegen retry added
+      - zombie run (in_progress 2h+, GitHub never enforced the 60-min timeout) + uncapped
+        flutter-test probe hang → probe wrapped in `timeout 900`, timeout ≠ code failure
+        (fails honestly: "infrastructure stall, not code"); zombie run cancelled manually
 
 ## Phase 4 — GitHub Actions build & delivery
 

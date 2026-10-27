@@ -148,11 +148,34 @@ and secondary rate limits never cap the factory:
   only); build repos use stock `github.token`; the app passes nothing.
 - Distribution under bursts is visible in `last_used_at` / `builds_used`.
 
-## Burst test (20 parallel builds, 3 accounts) — in flight at time of writing
+## Burst test (20 parallel builds, 3 accounts) — wave 4: 17/20 shipped
 
-Wave fired 19:13 UTC with the fixed claim (first attempt died at claim: plpgsql
-ambiguity above → all rows honestly `failed` with the message; cancelled 19 live runs
-before codegen completed so zero credits were wasted; rows re-used on re-fire).
+True cross-account distribution proven: Modather22222 9 · modatherclacher 4 · hesab59hesba 4.
+First builds on fresh accounts worked end-to-end (empty-repo first push establishes main,
+first-ever workflow dispatch + release). Pool counters (builds_used 18/18/18) show the LRU
+claim staying perfectly balanced through all waves.
+
+Failures → fixes (commit 8e8a20e):
+1. **Rebase conflict on the shared build.yml** (Recipe Card): each worker baked its app's
+   `__DART__` into the monorepo's root build.yml → a later worker's rebase hit a conflict on
+   that file whenever another account-mate had pushed. Fix: build.yml carries ZERO per-app
+   content — `app_dir` + `dart_name` are dispatch inputs; identical content never conflicts.
+2. **Incomplete codegen with no retry** (Chess Clock): agent returned no usable project;
+   worker failed immediately. Fix: wipe + one fresh codegen roll before failing.
+3. **Zombie run + uncapped probe** (Unit Quiz): run stuck `in_progress` 2h+ (GitHub never
+   enforced the 60-min timeout — known zombie behavior), row honestly swept by the watchdog
+   cron ("Build stalled over 30 minutes — retry to re-dispatch"). Fix: smoke probe wrapped
+   in `timeout 900`; exit 124 = infrastructure stall → fail fast with an honest message
+   instead of hanging to the job kill. Zombie cancelled via `gh run cancel`.
+
+Monitoring lessons (watchers, not project): `Invoke-RestMethod` 401s from this machine
+while curl.exe succeeds with identical headers — watchers use curl.exe only; native-exe
+stdout arrives line-split in the PowerShell pipeline and mangles pretty-printed JSON →
+parse from a temp file with `Get-Content -Raw`.
+
+Future hardening: `with_retry` burns ~8 min of backoff on unrecoverable errors
+(e.g. "couldn't find remote ref main") — add a fail-fast classification of permanent
+vs transient errors.
 
 # Phase 3 slice 4 — stress test findings + monorepo build repo
 
