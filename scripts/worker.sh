@@ -37,15 +37,46 @@ sb_patch() { # best-effort; must never break the pipeline itself
     -d "$1" > /dev/null || true
 }
 
-sb_post() { # idempotent insert — on_conflict + ignore-duplicates so
-            # dashboard-edited rows are never overwritten by bootstrap seeds
+sb_rpc() { # fire-and-forget service-key RPC call
   curl -sS -m 20 -X POST \
-    "${SUPABASE_URL}/rest/v1/$1" \
+    "${SUPABASE_URL}/rest/v1/rpc/$1" \
+    -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "content-type: application/json" -d "$2" > /dev/null || true
+}
+
+sb_patch_acct() { # best-effort write to a factory_accounts row (quarantine etc.)
+  curl -sS -m 20 -X PATCH \
+    "${SUPABASE_URL}/rest/v1/factory_accounts?id=eq.$1" \
     -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
     -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
     -H "content-type: application/json" \
-    -H "Prefer: return=minimal,resolution=ignore-duplicates" \
+    -H "Prefer: return=minimal" \
     -d "$2" > /dev/null || true
+}
+
+validate_pat() { # validate_pat <pat> → prints "ok" or a quarantine reason.
+                 # Identity + OAuth scopes via GitHub REST. Fine-grained PATs
+                 # return no scopes header and cannot create repos → rejected.
+  local HEADERS CODE SCOPES
+  HEADERS=$(curl -sS -m 20 -D - -o /dev/null \
+    -H "Authorization: Bearer $1" -H "Accept: application/vnd.github+json" \
+    https://api.github.com/user 2>/dev/null) || { echo "identity check request failed"; return 0; }
+  CODE=$(printf '%s\n' "$HEADERS" | head -n1 | awk '{print $2}')
+  if [[ "$CODE" != "200" ]]; then
+    echo "PAT rejected by GitHub (HTTP ${CODE:-unknown}) — expired, wrong, or revoked"
+    return 0
+  fi
+  SCOPES=$(printf '%s\n' "$HEADERS" | grep -i '^x-oauth-scopes:' | cut -d':' -f2- | sed 's/^ //' | tr -d '\r')
+  if ! printf '%s\n' "$SCOPES" | grep -qw repo; then
+    echo "PAT lacks 'repo' scope (scopes: ${SCOPES:-none — fine-grained token?})"
+    return 0
+  fi
+  if ! printf '%s\n' "$SCOPES" | grep -qw workflow; then
+    echo "PAT lacks 'workflow' scope (scopes: $SCOPES)"
+    return 0
+  fi
+  echo "ok"
 }
 
 claim_account() { # atomic LRU claim from the multi-account pool
@@ -226,28 +257,42 @@ mark pushing
 patch_state pushing
 
 # --- account pool -----------------------------------------------------------------------
-# Bootstrap: register this job's own factory account on the pool (idempotent).
+# Bootstrap: register this job's own factory account on the pool via the
+# ensure RPC — self-healing if deleted, never overwrites dashboard edits.
 if [[ -n "${FACTORY_GH_PAT:-}" ]]; then
-  sb_post "factory_accounts?on_conflict=owner" "$(jq -nc \
-    --arg owner "$REPO_OWNER" --arg pat "$FACTORY_GH_PAT" \
-    '{label:"factory default", owner:$owner, pat:$pat, active:true}')"
+  sb_rpc ensure_factory_account "$(jq -nc \
+    --arg o "$REPO_OWNER" --arg pat "$FACTORY_GH_PAT" \
+    '{p_owner:$o, p_pat:$pat}')"
 fi
 
-# Claim the least-recently-used account for this build. Parallel workers
-# rotate across the whole pool; skip-locked keeps concurrent claims disjoint.
-# PostgREST RPC returns an ARRAY envelope: [{id,owner,pat,label}] — object
-# paths on it are jq ERRORS, so every path handles both array and object.
-ACCT=$(claim_account) || ACCT=""
-OWNER=$(jq -r '(.[0].owner // .owner) // empty' <<<"$ACCT" 2>/dev/null || echo "")
-if [[ -z "$OWNER" ]]; then
-  MSG=$(jq -r '(.[0].message // .message) // "empty claim response"' <<<"$ACCT" 2>/dev/null) || \
-    MSG="account claim request failed"
-  [[ -z "$MSG" || "$MSG" == "null" ]] && MSG="account claim request failed"
-  fail "GitHub account pool: ${MSG}"
-fi
+# Claim the least-recently-used account, then pre-flight its PAT. A broken
+# row (expired/revoked token, missing repo/workflow scope, fine-grained
+# token) is quarantined — active=false + last_error — and the next account
+# is claimed: a bad paste costs seconds, not a build. Each failed validation
+# shrinks the pool, so the loop terminates in FACTORY_NO_ACCOUNTS at worst.
+# PostgREST RPC returns an ARRAY envelope; paths handle both array/object.
+while :; do
+  ACCT=$(claim_account) || ACCT=""
+  OWNER=$(jq -r '(.[0].owner // .owner) // empty' <<<"$ACCT" 2>/dev/null || echo "")
+  if [[ -z "$OWNER" ]]; then
+    MSG=$(jq -r '(.[0].message // .message) // "empty claim response"' <<<"$ACCT" 2>/dev/null) || \
+      MSG="account claim request failed"
+    [[ -z "$MSG" || "$MSG" == "null" ]] && MSG="account claim request failed"
+    fail "GitHub account pool: ${MSG}"
+  fi
+  CLAIM_PAT=$(jq -r '(.[0].pat // .pat)' <<<"$ACCT")
+  CLAIM_ID=$(jq -r '(.[0].id // .id)' <<<"$ACCT")
+  VERDICT=$(validate_pat "$CLAIM_PAT")
+  if [[ "$VERDICT" == "ok" ]]; then
+    sb_patch_acct "$CLAIM_ID" '{"last_error":null}'
+    echo "Build account: ${OWNER} (pool row ${CLAIM_ID}) — PAT ok"
+    break
+  fi
+  sb_patch_acct "$CLAIM_ID" "$(jq -nc --arg e "$VERDICT" '{active:false, last_error:$e}')"
+  echo "quarantined ${OWNER}: ${VERDICT}"
+done
 BUILD_REPO="${OWNER}/app-factory-outputs"
-export GH_TOKEN="$(jq -r '(.[0].pat // .pat)' <<<"$ACCT")"
-echo "Build account: ${OWNER} (pool row $(jq -r '(.[0].id // .id)' <<<"$ACCT"))"
+export GH_TOKEN="$CLAIM_PAT"
 
 rm -f request.md repair.md /tmp/opencode-agent.log 2> /dev/null || true
 gh auth setup-git > /dev/null 2>&1 || true
