@@ -125,6 +125,25 @@ password grant 200 · projects insert 201 · owner PATCH 204 · forged user_id i
 anon reads **0 rows** · edge fn: ready-short-circuit 200 ok/ready · fake JWT **401** gateway ·
 unknown project **404** · unconfigured factory **503** with clean message.
 
+# Phase 3 slice 4 — stress test findings + monorepo build repo
+
+## Stress test (2026-10-27): 12 parallel builds on one account
+
+- **Codegen parallelizes perfectly** — 12 opencode agent sessions completed simultaneously,
+  no auth races, all produced complete projects.
+- **Wall #1 — repo-creation burst limiter**: `gh repo create` (GraphQL createRepository) refused
+  with "You have created too many repositories, too quickly" ×8; backoff (15/30/60/120/240s)
+  didn't clear it — the window outlives the backoff and parallel retries keep the counter hot.
+- **Wall #2 — build-dispatch burst**: same family, refused ×2.
+- **Architecture response — the build MONOREPO** (commit fbde491): one repo
+  `app-factory-outputs`, each app = `apps/<project-id>/` + per-app release tag `af-<project-id>`.
+  - Zero repo creation at build time (one repo, created once) → the limiter is gone by design.
+  - Worker clones (depth 1), replaces its app folder, pushes; the build workflow (one copy at the
+    repo root, refreshed on every push) is dispatched with `app_dir`; polls match OUR push's
+    commit SHA (unambiguous under parallel dispatches).
+  - APK lands at `releases/download/af-<project-id>/app-release.apk` — per-app rolling releases.
+- Wave 3 (7 failed projects, staggered 90s, monorepo pipeline) → verifying.
+
 # Phase 3 slice 3 — real plan meters + server-enforced quota
 
 - **Enforcement = DB trigger** (`phase3_project_quota` → `private.enforce_project_quota()`):
