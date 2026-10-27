@@ -169,6 +169,12 @@ Operator playbook (dashboard only):
 - **Remove the factory-managed account** → set `factory_owner = 'none'`, then deactivate/delete the row
 - **Bad PAT pasted** → first build quarantines the row automatically (`active=false`, `last_error`) and ships on the next account
 
+Verified live (2026-10-27): the legacy credential auto-promoted into the pair
+(`factory_owner=Modather22222` + `factory_pat` present); a deliberately-bad PAT row was
+claimed → pre-flight 401 → quarantined with `last_error="PAT rejected by GitHub (HTTP 401)…"`
+within 1s → the build continued on a healthy account and shipped; final soak distribution
+Modather22222 9 · modatherclacher 6 · hesab59hesba 5 across 20/20 ready apps.
+
 ## Burst test (20 parallel builds, 3 accounts) — FINAL: 20/20 shipped
 
 Wave 4 shipped 17/20 (distribution 9/4/4); wave 5 re-fired the 3 failures — every fix

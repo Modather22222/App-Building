@@ -116,6 +116,13 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
       - zombie run (in_progress 2h+, GitHub never enforced the 60-min timeout) + uncapped
         flutter-test probe hang → probe wrapped in `timeout 900`, timeout ≠ code failure
         (fails honestly: "infrastructure stall, not code"); zombie run cancelled manually
+- [x] Account health + DB-managed factory account (verified live 2026-10-27):
+      PAT pre-flight (identity + repo/workflow scopes) at claim; broken rows auto-quarantined
+      (active=false + last_error) with re-claim — bad PAT detected in 1s, build shipped green
+      on a healthy account; factory bootstrap owned by the `factory_settings` pair
+      (`factory_owner`, `none` kill value + `factory_pat` in the service-only table); legacy
+      GH secret auto-promoted into the pair on first build → dashboard is the single
+      management surface for add/replace/rotate/disable
 
 ## Phase 4 — GitHub Actions build & delivery
 
