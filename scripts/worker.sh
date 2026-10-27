@@ -67,6 +67,22 @@ patch_state() { # patch_state <status> — writes status + all stage markers
 
 trap 'fail "worker step failed at line $LINENO (see this run log)"' ERR
 
+with_retry() { # with_retry <label> <cmd...> — bursty POST endpoints trip GitHub's
+               # secondary rate limits; backoff 15/30/60/120/240 clears them.
+  local label="$1"; shift
+  local delays=(15 30 60 120 240)
+  local attempt=0
+  for d in 0 "${delays[@]}"; do
+    if [[ $attempt -gt 0 ]]; then
+      echo "  retrying ${label} in ${d}s (attempt $((attempt + 1)))"
+      sleep "$d"
+    fi
+    if "$@"; then return 0; fi
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
 # --- 1. project row ----------------------------------------------------------------
 ROW=$(curl -sS -m 20 "${SUPABASE_URL}/rest/v1/projects?id=eq.${PROJECT_ID}&select=id,name,prompt,summary,status" \
   -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
@@ -181,9 +197,10 @@ gh auth setup-git > /dev/null 2>&1 || true
 if gh repo view "${REPO_OWNER}/${REPO_NAME}" > /dev/null 2>&1; then
   # Retry of the same project: repo already exists — reuse and overwrite it.
   git remote add origin "https://github.com/${REPO_OWNER}/${REPO_NAME}.git"
-  git push -q --force -u origin main
+  with_retry "push" git push -q --force -u origin main
 else
-  gh repo create "${REPO_OWNER}/${REPO_NAME}" --public --source . --remote origin --push > /dev/null
+  with_retry "repo create" gh repo create "${REPO_OWNER}/${REPO_NAME}" \
+    --public --source . --remote origin --push > /dev/null
 fi
 
 stage_end pushing
@@ -192,7 +209,7 @@ sb_patch "$(jq -nc --arg r "${REPO_OWNER}/${REPO_NAME}" --argjson st "$(markers_
   '{status:"queued", repo:$r, stage_times:$st}')"
 
 # --- 4. dispatch build + poll -----------------------------------------------------------
-gh workflow run build.yml -R "${REPO_OWNER}/${REPO_NAME}" --ref main > /dev/null
+with_retry "build dispatch" gh workflow run build.yml -R "${REPO_OWNER}/${REPO_NAME}" --ref main
 sleep 20
 
 BUILDING_MARKED=0
