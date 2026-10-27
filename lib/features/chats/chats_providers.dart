@@ -178,6 +178,8 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
             id: row.id,
             role: row.role == 'user' ? ChatRole.user : ChatRole.assistant,
             text: row.content,
+            planName: row.planName,
+            planSummary: row.planSummary,
             at: row.createdAt,
           ),
       ];
@@ -263,6 +265,8 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
             chatId: arg,
             role: 'assistant',
             content: finalReply.text,
+            planName: finalReply.planName,
+            planSummary: finalReply.planSummary,
           );
         } catch (_) {
           // Degrade: assistant reply only lives in memory.

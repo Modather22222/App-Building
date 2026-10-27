@@ -53,6 +53,8 @@ class ChatRepository {
     required String chatId,
     required String role,
     required String content,
+    String? planName,
+    String? planSummary,
   }) async {
     try {
       await SupabaseConfig.client.from('messages').insert({
@@ -60,6 +62,8 @@ class ChatRepository {
         'chat_id': chatId,
         'role': role,
         'content': content,
+        'plan_name': ?planName,
+        'plan_summary': ?planSummary,
       });
     } catch (_) {
       throw ChatStoreOffline();
@@ -102,6 +106,8 @@ class ChatRepository {
             id: r['id'] as String,
             role: r['role'] as String,
             content: r['content'] as String,
+            planName: r['plan_name'] as String?,
+            planSummary: r['plan_summary'] as String?,
             createdAt: DateTime.parse(r['created_at'] as String),
           ),
       ];
@@ -131,10 +137,14 @@ class MessageRow {
     required this.role,
     required this.content,
     required this.createdAt,
+    this.planName,
+    this.planSummary,
   });
 
   final String id;
   final String role;
   final String content;
+  final String? planName;
+  final String? planSummary;
   final DateTime createdAt;
 }
