@@ -148,6 +148,27 @@ and secondary rate limits never cap the factory:
   only); build repos use stock `github.token`; the app passes nothing.
 - Distribution under bursts is visible in `last_used_at` / `builds_used`.
 
+### Factory account management — fully DB-driven
+
+The bootstrap account is NOT hardcoded. It is owned by a `factory_settings` pair:
+
+| setting | meaning |
+|---|---|
+| `factory_owner` | GitHub username of the self-healing account — or `none` to disable the factory-managed row entirely |
+| `factory_pat` | that account's PAT (factory_settings is service-only: RLS ON, no policies — anon/authenticated see nothing) |
+
+Worker behavior every run: promote the legacy `FACTORY_GH_PAT` secret into these rows
+on first use (ignore-duplicates — user edits always win), then `ensure_factory_account`
+(resurrect the pair's row if deleted; NEVER overwrite an existing row; the `managed`
+flag is a globally-unique invariant — pointing the factory at a new owner clears the
+old row's flag).
+
+Operator playbook (dashboard only):
+- **Replace the factory-managed account** → edit the two settings rows; the old account row remains as an operator row (deactivate it if unwanted)
+- **Rotate the managed row's PAT** → edit the ROW's `pat` (rows are authoritative once they exist)
+- **Remove the factory-managed account** → set `factory_owner = 'none'`, then deactivate/delete the row
+- **Bad PAT pasted** → first build quarantines the row automatically (`active=false`, `last_error`) and ships on the next account
+
 ## Burst test (20 parallel builds, 3 accounts) — FINAL: 20/20 shipped
 
 Wave 4 shipped 17/20 (distribution 9/4/4); wave 5 re-fired the 3 failures — every fix
