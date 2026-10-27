@@ -124,10 +124,15 @@ fi
 flutter pub get > /dev/null 2>&1 || true
 REPAIRS=0
 while :; do
+  # The ERR trap inherits into command substitutions (even under set +e) —
+  # around this EXPECTED-to-fail probe it must be disarmed or the trap's
+  # fail() kills the run before any repair pass can happen.
+  trap - ERR
   set +e
   TEST_LOG=$(flutter test 2>&1)
   TEST_STATUS=$?
   set -e
+  trap 'fail "worker step failed at line $LINENO (see this run log)"' ERR
   if [[ "$TEST_STATUS" -eq 0 ]]; then
     if [[ "$REPAIRS" -gt 0 ]]; then
       echo "Repair pass $REPAIRS made the smoke test pass."
