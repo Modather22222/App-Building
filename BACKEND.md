@@ -10,7 +10,7 @@ Replace the mock layer with real persistence while keeping the app's shape intac
 - Mock auth → Supabase auth, **email + password only** (decision: no guest/anonymous mode; the
   onboarding flow ends at a sign-up/sign-in form instead of guest sign-in)
 - Mock chat (`MockChatService`) → real chat/message rows (agent replies stay mock-generated until Phase 3)
-- Simulated pipeline (`projects_providers.dart`) → projects/builds rows with real status timeline **(later slice)**
+- Simulated pipeline (`projects_providers.dart`) → projects/builds rows with real status timeline ✓ (row-status polling; the worker authors the truth)
 - Plan meters → server-derived token accounting (authoritative, not client-filtered) **(later slice)**
 
 ## Schema (v1)
@@ -72,6 +72,8 @@ size) land in the NEXT slice alongside the real pipeline (Phase 3/4), so the v1 
   → projectsProvider.create()  : projects row (status generating, stage_times seeded)
   → edge function request-build: JWT-verified, row-ownership check, dispatches factory-worker.yml
   → GitHub Actions worker      : opencode codegen → public repo af-<slug>-<id> → dispatch build.yml → poll
+  → request-build fn           : fires build-requested repository_dispatch → row 'dispatched'
+  → worker job starts          : row 'dispatched' → 'generating' (first stage patch)
   → worker flips row status    : generating → pushing → queued → building → ready + apk_url
   → app polls (12 s)           : timeline + Apps tab update; Download APK / Repo buttons go live
 ```
@@ -83,7 +85,7 @@ size) land in the NEXT slice alongside the real pipeline (Phase 3/4), so the v1 
 | id | **text PK** | client-generated (`proj-…`, app owns insert) |
 | user_id | uuid FK profiles(id) | owner; RLS all-own |
 | name / prompt / summary | text | plan chunk + verbatim chat request |
-| status | text | generating/pushing/queued/building/ready/failed (check) |
+| status | text | dispatched/generating/pushing/queued/building/ready/failed (check) |
 | repo / apk_url / error | text | **worker-owned** (service role writes; app freezes them) |
 | stage_times | jsonb | `{stage: iso, stage_done: iso……}` — app folds into timeline markers |
 | created_at / updated_at | timestamptz | |

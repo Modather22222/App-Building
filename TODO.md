@@ -128,13 +128,24 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 
 - [x] Workflow: ubuntu-latest, Flutter 3.47.7 (pinned), Gradle cache, `timeout-minutes: 20`, analyze + test gates — first run patched green in 8m36s (build succeeded)
 - [x] Delivery: rolling **`latest-build` release asset** per run (`--clobber` overwrite). Artifact-upload route was abandoned: the shared 500 MB personal storage quota is full (scan showed 0 MB of Actions caches/artifacts across all 86 repos → suspected old GitHub Packages containers; gh token lacks `read:packages` to confirm). Release storage is separate and effectively unlimited.
-- [ ] Trigger via `repository_dispatch` from backend; poll `runs` API; map statuses to app states
-- [ ] Queue UX: pre-existing queue banner (done in mock) now fed by real Automation concurrency data
+- [x] Trigger via `repository_dispatch` from backend — **verified live 2026-10-27**:
+      request-build v13+ fires `build-requested` with client_payload {project_id, model};
+      API e2e green (sign-in → 202 → run with event=repository_dispatch → row ready in ~6 min).
+      Statuses map to app states via the DB rows (row-status polling won over runs-API polling
+      during Phase 3 — the worker authors the truth)
+- [x] Queue UX: real `dispatched` state — the row sits `dispatched` between a successful
+      dispatch and the worker's first stage patch (GitHub-side queue wait), shown as the
+      existing "Queued — Waiting for build runner" chip. Bug fixed en route: the
+      `projects_status_check` constraint (fixed enum) bounced 'dispatched' writes silently
+      (supabase-js resolves REST errors without throwing) — constraint now includes it
 - [ ] Download screen: direct install link to `releases/download/latest-build/app-release.apk` + build id/size info
 
 ## Phase 5 — Hardening & launch prep
 
 - [ ] Secrets: scoped GitHub token per operation (repo create/dispatch/artifact) — no broad PAT in app
+- [ ] Retry idempotency guard: request-build refuses to dispatch when the project is already
+      in-flight (dispatched/generating/pushing/queued/building) — surfaced by a probe
+      double-dispatch firing two identical builds
 - [ ] Abuse guards: rate limits per user, spam detection on chat, spending-limit alerts
 - [ ] Failure taxonomy: maps CI errors → plain-language chat replies for users
 - [ ] Telemetry: activation funnel (onboard → first chat → first build → first download)
