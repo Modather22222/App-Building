@@ -89,6 +89,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  // Model resolution order: DB factory_settings.model → env FACTORY_CHAT_MODEL
+  // → DEFAULT_MODEL. The DB stores one bare id shared with codegen; the raw
+  // REST API needs it unprefixed, so strip a provider prefix if present.
+  let model = Deno.env.get("FACTORY_CHAT_MODEL") || DEFAULT_MODEL;
+  {
+    const { data: settings } = await admin
+      .from("factory_settings")
+      .select("key, value");
+    const dbModel = (settings ?? []).find((s) => s.key === "model")?.value;
+    if (dbModel && dbModel.trim()) {
+      model = dbModel.trim().replace(/^opencode\//, "");
+    }
+  }
+
   const body = {
     model: Deno.env.get("FACTORY_CHAT_MODEL") || DEFAULT_MODEL,
     messages: [{ role: "system", content: SYSTEM }, ...turns],

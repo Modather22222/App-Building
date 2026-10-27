@@ -111,7 +111,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  const model = Deno.env.get("FACTORY_MODEL") || DEFAULT_MODEL;
+  // Model resolution order: DB factory_settings.model → env FACTORY_MODEL →
+  // DEFAULT_MODEL. Any format works — the worker normalizes bare to prefixed.
+  let model = Deno.env.get("FACTORY_MODEL") || DEFAULT_MODEL;
+  {
+    const { data: settings } = await admin
+      .from("factory_settings")
+      .select("key, value");
+    const dbModel = (settings ?? []).find((s) => s.key === "model")?.value;
+    if (dbModel && dbModel.trim()) model = dbModel.trim();
+  }
+
   const dispatch = await fetch(
     `https://api.github.com/repos/${FACTORY_REPO}/actions/workflows/${WORKFLOW}/dispatches`,
     {
