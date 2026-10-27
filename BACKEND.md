@@ -1,6 +1,6 @@
 # BACKEND.md — Phase 2 (Supabase)
 
-Status: **phase 2 slice 1 shipped + device-verified; phase 3 slice 1 (real build pipeline) wired**.
+Status: **phase 2 shipped; phase 3 stress-proven (12/12) + multi-account pool live**.
 Project ref: `loeaiuktjmhxeoxpyqjl` (remote MCP in `opencode.json`).
 
 ## Goals
@@ -124,6 +124,35 @@ Needs a function secret **FACTORY_GH_PAT** until then callers get 503 "factory i
 password grant 200 · projects insert 201 · owner PATCH 204 · forged user_id insert **403** ·
 anon reads **0 rows** · edge fn: ready-short-circuit 200 ok/ready · fake JWT **401** gateway ·
 unknown project **404** · unconfigured factory **503** with clean message.
+
+# Phase 3 slice 5 — multi-account build pool
+
+The build side fans out over N GitHub accounts so one account's concurrency ceiling
+and secondary rate limits never cap the factory:
+
+- **`public.factory_accounts`** — `label · owner · pat · active · last_used_at · builds_used`.
+  RLS ON with **no policies**: only the service role (worker / MCP) and the dashboard
+  Table Editor can read a row. A PAT never crosses a public API surface.
+- **`public.claim_factory_account()`** — atomic least-recently-used claim:
+  `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED …) RETURNING INTO` + `builds_used + 1`.
+  Grants: execute → service_role only (anon/authenticated revoked; verified 401).
+  ⚠️ plpgsql gotcha (cost us a wave): `RETURNS TABLE` out-params shadow same-named table
+  columns — every reference inside must be table-aliased or it dies at runtime with
+  "column reference is ambiguous".
+- **Worker wiring (`scripts/worker.sh`)**: at stage 3 (after codegen) it (a) self-seeds its
+  own factory account (`Prefer: resolution=ignore-duplicates` on `on_conflict=owner` — never
+  overwrites dashboard-edited PATs), (b) claims an account, (c) runs every subsequent gh/git
+  operation on that account's PAT against `claimed_owner/app-factory-outputs`.
+- **Secrets inventory**: per-account PAT → DB only; factory repo GH secrets stay
+  `OPENCODE_API_KEY` + `SUPABASE_SERVICE_ROLE_KEY` + `FACTORY_GH_PAT` (now bootstrap/dispatch
+  only); build repos use stock `github.token`; the app passes nothing.
+- Distribution under bursts is visible in `last_used_at` / `builds_used`.
+
+## Burst test (20 parallel builds, 3 accounts) — in flight at time of writing
+
+Wave fired 19:13 UTC with the fixed claim (first attempt died at claim: plpgsql
+ambiguity above → all rows honestly `failed` with the message; cancelled 19 live runs
+before codegen completed so zero credits were wasted; rows re-used on re-fire).
 
 # Phase 3 slice 4 — stress test findings + monorepo build repo
 

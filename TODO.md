@@ -93,14 +93,19 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
       this behavior now; edit-token tracking lands with billing
 - [x] Plan/token meters server-side — DB trigger quota (free 3 / pro 30 per month, friendly
       refusal) + real profile card; owner bumped to `pro` for dev comfort
-- [ ] Queue watchdog: rows stuck in generating > 30 min get flagged/dead-lettered
+- [x] Queue watchdog: pg_cron sweep every 10 min auto-fails rows stalled > 30 min
+      (`phase3_reliability_pack`, factory-stalled-sweep cron job) + `updated_at` trigger
 - [x] Real agent chat — `agent-chat` edge function + `AgentChatService` through the ReplyChunk
       contract; **live-verified 2026-10-26**: two-turn real conversation, plan proposal + parse ✓
       (3.7–5.3 s latency), backend-less mock fallback intact
 - [x] Model economics resolved: free pool is account-level (drained) → paid `glm-5.3-flash`
       default on the funded key; error surfacing fixed (raw HttpClient — real reasons in chat)
 - [ ] True SSE streaming for chat replies (replace the wait-then-type feel)
-- [ ] Persist plan proposals (name/summary) on the message row so they survive reinstall
+- [x] Persist plan proposals (name/summary) on the message row — cards survive reinstall
+- [x] Stress-proven: 12 parallel builds 12/12 shipped → **monorepo** build repo
+      (`app-factory-outputs`, per-app folder + per-app release tag) replaced per-app repos
+- [~] Multi-account build pool (`factory_accounts` + atomic LRU claim + worker self-seed):
+      3 accounts registered; 20-build soak in flight
 
 ## Phase 4 — GitHub Actions build & delivery
 
