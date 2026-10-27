@@ -138,7 +138,12 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
       existing "Queued — Waiting for build runner" chip. Bug fixed en route: the
       `projects_status_check` constraint (fixed enum) bounced 'dispatched' writes silently
       (supabase-js resolves REST errors without throwing) — constraint now includes it
-- [ ] Download screen: direct install link to `releases/download/latest-build/app-release.apk` + build id/size info
+- [x] Download screen: per-app install link (the row's `apk_url` → its own release tag on the
+      build repo) + real build info — worker captures `build_info {run_id, run_number, size_bytes}`
+      at ready (verified live: "Build #20 · 43.1 MB"); footer wording fixed for monorepo mode.
+      Poll bug fixed en route: `gh run list` field is `number`, not `runNumber` — an invalid
+      field makes gh reject EVERY poll cycle, and `2>/dev/null` hid the reason for the whole
+      27-min window; poll stderr is now visible in worker logs
 
 ## Phase 5 — Hardening & launch prep
 

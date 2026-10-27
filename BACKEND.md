@@ -74,7 +74,7 @@ size) land in the NEXT slice alongside the real pipeline (Phase 3/4), so the v1 
   → GitHub Actions worker      : opencode codegen → public repo af-<slug>-<id> → dispatch build.yml → poll
   → request-build fn           : fires build-requested repository_dispatch → row 'dispatched'
   → worker job starts          : row 'dispatched' → 'generating' (first stage patch)
-  → worker flips row status    : generating → pushing → queued → building → ready + apk_url
+  → worker flips row status    : generating → pushing → queued → building → ready + apk_url + build_info (run id/number, APK size)
   → app polls (12 s)           : timeline + Apps tab update; Download APK / Repo buttons go live
 ```
 
