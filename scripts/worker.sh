@@ -389,12 +389,12 @@ FINAL_CONCLUSION=""
 FINAL_RUN_ID=""
 for _ in $(seq 1 80); do # 80 * 20s ≈ 27 min ceiling
   RUN_JSON=$(gh run list -R "$BUILD_REPO" --workflow build.yml --limit 40 \
-    --json status,conclusion,databaseId,headSha,runNumber 2>/dev/null \
+    --json status,conclusion,databaseId,headSha,number \
     | jq -c --arg sha "$HEAD_SHA" '[.[] | select(.headSha == $sha)][0] // empty') || true
   STATUS=$(jq -r '.status // ""' <<< "${RUN_JSON:-}")
   CONCLUSION=$(jq -r '.conclusion // ""' <<< "${RUN_JSON:-}")
   RUN_ID=$(jq -r '.databaseId // ""' <<< "${RUN_JSON:-}")
-  RUN_NUMBER=$(jq -r '.runNumber // ""' <<< "${RUN_JSON:-}")
+  RUN_NUMBER=$(jq -r '.number // ""' <<< "${RUN_JSON:-}")
   if [[ "$STATUS" == "in_progress" && "$BUILDING_MARKED" -eq 0 ]]; then
     BUILDING_MARKED=1
     mark building
