@@ -389,11 +389,12 @@ FINAL_CONCLUSION=""
 FINAL_RUN_ID=""
 for _ in $(seq 1 80); do # 80 * 20s ≈ 27 min ceiling
   RUN_JSON=$(gh run list -R "$BUILD_REPO" --workflow build.yml --limit 40 \
-    --json status,conclusion,databaseId,headSha 2>/dev/null \
+    --json status,conclusion,databaseId,headSha,runNumber 2>/dev/null \
     | jq -c --arg sha "$HEAD_SHA" '[.[] | select(.headSha == $sha)][0] // empty') || true
   STATUS=$(jq -r '.status // ""' <<< "${RUN_JSON:-}")
   CONCLUSION=$(jq -r '.conclusion // ""' <<< "${RUN_JSON:-}")
   RUN_ID=$(jq -r '.databaseId // ""' <<< "${RUN_JSON:-}")
+  RUN_NUMBER=$(jq -r '.runNumber // ""' <<< "${RUN_JSON:-}")
   if [[ "$STATUS" == "in_progress" && "$BUILDING_MARKED" -eq 0 ]]; then
     BUILDING_MARKED=1
     mark building
@@ -416,19 +417,27 @@ fi
 
 # --- 5. asset url + ready ----------------------------------------------------------------
 APK_URL="https://github.com/${BUILD_REPO}/releases/download/${RELEASE_TAG}/app-release.apk"
-ASSET_OK=0
+APK_SIZE=""
 for _ in $(seq 1 6); do
-  ASSET=$(gh api "repos/${BUILD_REPO}/releases" \
-    --jq "[.[] | select(.tag_name==\"${RELEASE_TAG}\") | .assets[] | select(.name==\"app-release.apk\")] | length > 0" \
-    2>/dev/null) || true
-  if [[ "$ASSET" == "true" ]]; then ASSET_OK=1; break; fi
+  APK_SIZE=$(gh api "repos/${BUILD_REPO}/releases" \
+    --jq "[.[] | select(.tag_name==\"${RELEASE_TAG}\") | .assets[] | select(.name==\"app-release.apk\")][0].size // empty" \
+    2>/dev/null) || APK_SIZE=""
+  if [[ -n "$APK_SIZE" ]]; then ASSET_OK=1; break; fi
   sleep 10
 done
 if [[ "$ASSET_OK" -ne 1 ]]; then
   fail "APK build succeeded but the release asset is missing (unexpected)"
 fi
 
+BUILD_INFO=$(jq -nc \
+  --arg rid "${FINAL_RUN_ID:-}" \
+  --arg rn "${RUN_NUMBER:-}" \
+  --arg sz "${APK_SIZE:-}" \
+  '{run_id:(if $rid=="" then null else $rid end),
+    run_number:(if $rn=="" then null else ($rn|tonumber) end),
+    size_bytes:(if $sz=="" then null else ($sz|tonumber) end)}')
+
 stage_end building
-sb_patch "$(jq -nc --arg u "$APK_URL" --argjson st "$(markers_json)" \
-  '{status:"ready", apk_url:$u, error:null, stage_times:$st}')"
+sb_patch "$(jq -nc --arg u "$APK_URL" --argjson bi "$BUILD_INFO" --argjson st "$(markers_json)" \
+  '{status:"ready", apk_url:$u, error:null, stage_times:$st, build_info:$bi}')"
 echo "Shipped ${APP_NAME} → ${APK_URL}"

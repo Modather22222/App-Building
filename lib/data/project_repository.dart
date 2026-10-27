@@ -72,6 +72,8 @@ class ProjectRepository {
             stageTimes:
                 (r['stage_times'] as Map?)?.cast<String, dynamic>() ??
                 const {},
+            buildInfo:
+                (r['build_info'] as Map?)?.cast<String, dynamic>(),
             createdAt: DateTime.parse(r['created_at'] as String),
             updatedAt: DateTime.parse(r['updated_at'] as String),
           ),
@@ -118,6 +120,7 @@ class ProjectRow {
     this.repo,
     this.apkUrl,
     this.error,
+    this.buildInfo,
   });
 
   final String id;
@@ -129,6 +132,7 @@ class ProjectRow {
   final String? apkUrl;
   final String? error;
   final Map<String, dynamic> stageTimes; // {stage: iso, stage_done: iso}
+  final Map<String, dynamic>? buildInfo; // {run_id, run_number, size_bytes}
   final DateTime createdAt;
   final DateTime updatedAt;
 }

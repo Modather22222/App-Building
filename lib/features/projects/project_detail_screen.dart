@@ -132,10 +132,10 @@ class _BuildTimeline extends StatelessWidget {
             const SizedBox(height: AppTokens.gapMd),
             Text(
               project.repo != null
-                  ? 'Build runs on GitHub Actions in a private repo '
-                      'created for this app.'
-                  : 'The factory will create a private repo for this app on '
-                      'GitHub once the build begins.',
+                  ? 'Build runs on GitHub Actions in the factory\u2019s '
+                      'shared build repo.'
+                  : 'The build starts on GitHub Actions once the factory '
+                      'dispatches it.',
               style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
@@ -339,11 +339,19 @@ class _BuildInfo extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
+    final info = project.buildInfo;
+    final runNo = info?['run_number'];
+    final sizeB = info?['size_bytes'];
+    final buildText = (runNo != null && sizeB != null)
+        ? '#$runNo \u00b7 ${((sizeB as num) / 1048576).toStringAsFixed(1)} MB'
+        : null;
+
     final rows = <String, String>{
       'Repository': project.repo ?? 'assigned on build start',
       'Requested':
           '${shortDate(project.createdAt)} \u00b7 ${clockTime(project.createdAt)}',
       'Status': project.failed ? 'Failed' : project.stage.label,
+      'Build': buildText ?? 'assigned on build completion',
       'Artifact': project.apkUrl != null ? 'app-release.apk' : 'pending',
     };
 
