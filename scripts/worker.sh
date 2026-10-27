@@ -211,12 +211,24 @@ if grep -q "__DART__\|{{APP_DIR_LABEL}}" "${MONO}/.github/workflows/build.yml"; 
   fail "template placeholder leak — slug substitution failed"
 fi
 
+# Parallel workers push to the same monorepo: pushes race into non-fast-forward
+# rejections. A retry must fetch+rebase the fresh remote first (app folders are
+# disjoint, so conflicts are practically impossible), then push.
+mono_push() {
+  git fetch -q origin main || return 1
+  if ! git rebase -q origin/main; then
+    git rebase --abort 2> /dev/null || true
+    return 1
+  fi
+  git push -q origin main
+}
+
 cd "$MONO"
 git config user.name "App Factory worker"
 git config user.email "workers@users.noreply.github.com"
 git add -A
 git commit -qm "App Factory: ${APP_NAME} (${PROJECT_ID})"
-with_retry "monorepo push" git push -q origin main
+with_retry "monorepo push" mono_push
 HEAD_SHA=$(git rev-parse HEAD)
 
 stage_end pushing
