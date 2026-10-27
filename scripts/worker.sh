@@ -2,7 +2,7 @@
 # App Factory — worker pipeline. One shell per project build:
 #   1. read the projects row from Supabase
 #   2. opencode generates the Flutter sources into a clean dir
-#   3. push as a private repo af-<slug>-<id>
+#   3. claim a GitHub account from the pool → wire into its app-factory-outputs monorepo
 #   4. dispatch the generated repo's build.yml, poll until the APK lands
 #   5. update the row (ready + apk_url, or failed + where to look)
 #
@@ -16,7 +16,7 @@ FACTORY_DIR="$(pwd)" # repo checkout root; used for templates below
 
 # --- required environment ------------------------------------------------------
 : "${SUPABASE_URL:?}" "${SUPABASE_SERVICE_ROLE_KEY:?}" "${PROJECT_ID:?}"
-: "${FACTORY_GH_PAT:?}" "${REPO_OWNER:?}" "${MODEL:?}"
+: "${REPO_OWNER:?}" "${MODEL:?}"
 
 # The CLI requires provider-prefixed model refs ("opencode/<id>"); bare ids
 # fail opencode's resolution with a cryptic server-side UnknownError.
@@ -35,6 +35,25 @@ sb_patch() { # best-effort; must never break the pipeline itself
     -H "content-type: application/json" \
     -H "Prefer: return=minimal" \
     -d "$1" > /dev/null || true
+}
+
+sb_post() { # idempotent insert — on_conflict + ignore-duplicates so
+            # dashboard-edited rows are never overwritten by bootstrap seeds
+  curl -sS -m 20 -X POST \
+    "${SUPABASE_URL}/rest/v1/$1" \
+    -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "content-type: application/json" \
+    -H "Prefer: return=minimal,resolution=ignore-duplicates" \
+    -d "$2" > /dev/null || true
+}
+
+claim_account() { # atomic LRU claim from the multi-account pool
+  curl -sS -m 20 -X POST \
+    "${SUPABASE_URL}/rest/v1/rpc/claim_factory_account" \
+    -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "content-type: application/json" -d '{}'
 }
 
 fail() {
@@ -105,7 +124,6 @@ SHORT_ID=$(printf '%s' "$PROJECT_ID" | tail -c 8 | tr '_' '-')
 # Monorepo: ONE build repo for every generated app — per-app folders under
 # apps/ and per-app release tags. Sidesteps GitHub's repo-creation burst
 # limiter entirely and keeps the user's account clean.
-BUILD_REPO="${REPO_OWNER}/app-factory-outputs"
 APP_DIR="apps/${PROJECT_ID}"
 RELEASE_TAG="af-${PROJECT_ID}"
 
@@ -184,8 +202,27 @@ stage_end generating
 mark pushing
 patch_state pushing
 
+# --- account pool -----------------------------------------------------------------------
+# Bootstrap: register this job's own factory account on the pool (idempotent).
+if [[ -n "${FACTORY_GH_PAT:-}" ]]; then
+  sb_post "factory_accounts?on_conflict=owner" "$(jq -nc \
+    --arg owner "$REPO_OWNER" --arg pat "$FACTORY_GH_PAT" \
+    '{label:"factory default", owner:$owner, pat:$pat, active:true}')"
+fi
+
+# Claim the least-recently-used account for this build. Parallel workers
+# rotate across the whole pool; skip-locked keeps concurrent claims disjoint.
+ACCT=$(claim_account)
+if ! jq -e '.owner != null' <<<"$ACCT" > /dev/null 2>&1; then
+  MSG=$(jq -r '.message // "empty claim response"' <<<"$ACCT" 2>/dev/null || \
+    echo "account claim request failed")
+  fail "GitHub account pool: ${MSG}"
+fi
+BUILD_REPO="$(jq -r '.owner' <<<"$ACCT")/app-factory-outputs"
+export GH_TOKEN="$(jq -r '.pat' <<<"$ACCT")"
+echo "Build account: $(jq -r '.owner' <<<"$ACCT") (pool row $(jq -r '.id' <<<"$ACCT"))"
+
 rm -f request.md repair.md /tmp/opencode-agent.log 2> /dev/null || true
-export GH_TOKEN="$FACTORY_GH_PAT"
 gh auth setup-git > /dev/null 2>&1 || true
 
 # Clone (depth 1) the build monorepo, creating it on first ever use.
