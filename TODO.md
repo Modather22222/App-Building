@@ -104,10 +104,11 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
 - [x] Persist plan proposals (name/summary) on the message row — cards survive reinstall
 - [x] Stress-proven: 12 parallel builds 12/12 shipped → **monorepo** build repo
       (`app-factory-outputs`, per-app folder + per-app release tag) replaced per-app repos
-- [~] Multi-account build pool (`factory_accounts` + atomic LRU claim + worker self-seed):
-      **20-build soak: 17/20 shipped, TRUE cross-account distribution 9/4/4** (first-ever builds
-      on the two fresh accounts worked end-to-end: empty-repo first push, first dispatch,
-      first releases). 3 failures = 3 distinct mechanisms, all fixed:
+- [x] Multi-account build pool (`factory_accounts` + atomic LRU claim + worker self-seed):
+      **20-build soak: 20/20 shipped** — final distribution Modather22222 10 · modatherclacher 5 ·
+      hesab59hesba 5; first-ever builds on the two fresh accounts worked end-to-end
+      (empty-repo first push, first dispatch, first releases). Failure mechanisms found and
+      permanently fixed along the way:
       - rebase conflict on shared build.yml (per-app __DART__ baked in) → build.yml now
         content-identical, per-app identity travels as dispatch inputs (app_dir + dart_name;
         dart_name keeps applicationId = com.appfactory.<dart> unique per app)

@@ -148,7 +148,13 @@ and secondary rate limits never cap the factory:
   only); build repos use stock `github.token`; the app passes nothing.
 - Distribution under bursts is visible in `last_used_at` / `builds_used`.
 
-## Burst test (20 parallel builds, 3 accounts) — wave 4: 17/20 shipped
+## Burst test (20 parallel builds, 3 accounts) — FINAL: 20/20 shipped
+
+Wave 4 shipped 17/20 (distribution 9/4/4); wave 5 re-fired the 3 failures — every fix
+validated in the same session: Recipe Card (parameterized build.yml), Chess Clock
+(fresh-codegen retry), Unit Quiz (zombie recovery). **Final: 20/20 ready,
+Modather22222 10 · modatherclacher 5 · hesab59hesba 5**, all releases live on their
+account's monorepo, `apk_url` per row pointing at the right account.
 
 True cross-account distribution proven: Modather22222 9 · modatherclacher 4 · hesab59hesba 4.
 First builds on fresh accounts worked end-to-end (empty-repo first push establishes main,
