@@ -229,13 +229,15 @@ echo "Build account: ${OWNER} (pool row $(jq -r '(.[0].id // .id)' <<<"$ACCT"))"
 rm -f request.md repair.md /tmp/opencode-agent.log 2> /dev/null || true
 gh auth setup-git > /dev/null 2>&1 || true
 
-# Clone (depth 1) the build monorepo, creating it on first ever use.
+# Clone (full depth — the monorepo is MBs of small sources; --depth 1 breaks
+# rebase merge-base computation the moment origin/main advances) the build
+# monorepo, creating it on first ever use.
 if ! gh repo view "$BUILD_REPO" > /dev/null 2>&1; then
   with_retry "monorepo create" gh repo create "$BUILD_REPO" --public > /dev/null
   sleep 5
 fi
 MONO="$(mktemp -d)"
-with_retry "monorepo clone" git clone -q --depth 1 "https://github.com/${BUILD_REPO}.git" "$MONO"
+with_retry "monorepo clone" git clone -q "https://github.com/${BUILD_REPO}.git" "$MONO"
 mkdir -p "${MONO}/apps"
 
 # Fresh generated tree into its app folder (retry overwrites cleanly).
@@ -252,14 +254,18 @@ if grep -q "__DART__\|{{APP_DIR_LABEL}}" "${MONO}/.github/workflows/build.yml"; 
   fail "template placeholder leak — slug substitution failed"
 fi
 
-# Parallel workers push to the same monorepo: pushes race into non-fast-forward
-# rejections. A retry must fetch+rebase the fresh remote first (app folders are
-# disjoint, so conflicts are practically impossible), then push.
+# Push races under parallel workers → see mono_push above.
 mono_push() {
-  git fetch -q origin main || return 1
-  if ! git rebase -q origin/main; then
-    git rebase --abort 2> /dev/null || true
-    return 1
+  # Parallel workers push to the same monorepo: pushes race into non-fast-forward
+  # rejections. Fetch ALL refs (an empty repo has no remote main to name —
+  # "couldn't find remote ref main" — and only the first push creates it),
+  # rebase only when a remote main exists, then push.
+  git fetch -q origin || return 1
+  if git show-ref --verify -q refs/remotes/origin/main; then
+    if ! git rebase -q origin/main; then
+      git rebase --abort 2> /dev/null || true
+      return 1
+    fi
   fi
   git push -q origin main
 }
