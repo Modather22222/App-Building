@@ -212,15 +212,19 @@ fi
 
 # Claim the least-recently-used account for this build. Parallel workers
 # rotate across the whole pool; skip-locked keeps concurrent claims disjoint.
-ACCT=$(claim_account)
-if ! jq -e '.owner != null' <<<"$ACCT" > /dev/null 2>&1; then
-  MSG=$(jq -r '.message // "empty claim response"' <<<"$ACCT" 2>/dev/null || \
-    echo "account claim request failed")
+# PostgREST RPC returns an ARRAY envelope: [{id,owner,pat,label}] — object
+# paths on it are jq ERRORS, so every path handles both array and object.
+ACCT=$(claim_account) || ACCT=""
+OWNER=$(jq -r '(.[0].owner // .owner) // empty' <<<"$ACCT" 2>/dev/null || echo "")
+if [[ -z "$OWNER" ]]; then
+  MSG=$(jq -r '(.[0].message // .message) // "empty claim response"' <<<"$ACCT" 2>/dev/null) || \
+    MSG="account claim request failed"
+  [[ -z "$MSG" || "$MSG" == "null" ]] && MSG="account claim request failed"
   fail "GitHub account pool: ${MSG}"
 fi
-BUILD_REPO="$(jq -r '.owner' <<<"$ACCT")/app-factory-outputs"
-export GH_TOKEN="$(jq -r '.pat' <<<"$ACCT")"
-echo "Build account: $(jq -r '.owner' <<<"$ACCT") (pool row $(jq -r '.id' <<<"$ACCT"))"
+BUILD_REPO="${OWNER}/app-factory-outputs"
+export GH_TOKEN="$(jq -r '(.[0].pat // .pat)' <<<"$ACCT")"
+echo "Build account: ${OWNER} (pool row $(jq -r '(.[0].id // .id)' <<<"$ACCT"))"
 
 rm -f request.md repair.md /tmp/opencode-agent.log 2> /dev/null || true
 gh auth setup-git > /dev/null 2>&1 || true
