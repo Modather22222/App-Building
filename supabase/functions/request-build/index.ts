@@ -155,6 +155,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
+  // Phase 4: mark the dispatch-wait. The row sits 'dispatched' until the
+  // worker job actually starts (GitHub queues it against the account's
+  // concurrency ceiling); the worker's first stage patch flips it to
+  // 'generating'. DB-true queue visibility for the app banner.
+  await admin.from("projects").update({ status: "dispatched" }).eq("id", projectId);
+
   // 204 No Content on the GitHub side — the row flips through statuses as
   // the worker runs. The app contract stays 202.
   return json({ ok: true, model }, 202);

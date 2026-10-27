@@ -105,6 +105,7 @@ class ProjectsState extends Notifier<List<AppProject>> {
       'ready' => BuildStage.ready,
       'failed' => BuildStage.values[lastStarted],
       'queued' => BuildStage.queued,
+      'dispatched' => BuildStage.queued, // dispatch-wait: job queued on the factory
       'building' => BuildStage.building,
       'pushing' => BuildStage.pushing,
       _ => BuildStage.generating,
