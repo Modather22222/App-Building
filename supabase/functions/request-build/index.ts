@@ -15,13 +15,29 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const FACTORY_REPO = "Modather22222/App-Building";
 const WORKFLOW = "factory-worker.yml";
-const DEFAULT_MODEL = "glm-5.3-flash";
+// CLI-format model ref (provider/model). Bare ids break opencode's model
+// resolution with a cryptic server-side UnknownError — always prefix here.
+const DEFAULT_MODEL = "opencode/glm-5.3-flash";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "content-type": "application/json" },
   });
+}
+
+// Worker-owned columns get the truth even when the WORKER never runs —
+// refusal paths (not configured, dispatch failure) write the failure back
+// so no project row is ever left spinning.
+async function failRow(
+  admin: ReturnType<typeof createClient>,
+  id: string,
+  message: string,
+): Promise<void> {
+  await admin
+    .from("projects")
+    .update({ status: "failed", error: message })
+    .eq("id", id);
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -84,6 +100,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const pat = Deno.env.get("FACTORY_GH_PAT");
   if (!pat) {
+    await failRow(
+      admin,
+      projectId,
+      "The factory is not configured yet (missing FACTORY_GH_PAT)",
+    );
     return json(
       { error: "The factory is not configured yet (missing FACTORY_GH_PAT)" },
       503,
@@ -110,6 +131,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!dispatch.ok) {
     const detail = await dispatch.text().catch(() => "");
+    await failRow(
+      admin,
+      projectId,
+      `Factory dispatch failed (${dispatch.status})`,
+    );
     return json(
       { error: `Factory dispatch failed (${dispatch.status})`, detail },
       502,

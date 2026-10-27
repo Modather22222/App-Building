@@ -18,6 +18,13 @@ FACTORY_DIR="$(pwd)" # repo checkout root; used for templates below
 : "${SUPABASE_URL:?}" "${SUPABASE_SERVICE_ROLE_KEY:?}" "${PROJECT_ID:?}"
 : "${FACTORY_GH_PAT:?}" "${REPO_OWNER:?}" "${MODEL:?}"
 
+# The CLI requires provider-prefixed model refs ("opencode/<id>"); bare ids
+# fail opencode's resolution with a cryptic server-side UnknownError.
+case "$MODEL" in
+  opencode/*) ;;
+  *) MODEL="opencode/${MODEL}" ;;
+esac
+
 now() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
 sb_patch() { # best-effort; must never break the pipeline itself
