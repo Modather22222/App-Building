@@ -122,8 +122,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (dbModel && dbModel.trim()) model = dbModel.trim();
   }
 
+  // repository_dispatch — the Phase 4 integration point: the worker workflow
+  // subscribes to `build-requested` and reads client_payload, so the backend
+  // never needs to know workflow file names or input shapes.
   const dispatch = await fetch(
-    `https://api.github.com/repos/${FACTORY_REPO}/actions/workflows/${WORKFLOW}/dispatches`,
+    `https://api.github.com/repos/${FACTORY_REPO}/dispatches`,
     {
       method: "POST",
       headers: {
@@ -133,8 +136,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        ref: "main",
-        inputs: { project_id: projectId, model },
+        event_type: "build-requested",
+        client_payload: { project_id: projectId, model },
       }),
     },
   );
@@ -152,6 +155,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // 202 — the row flips through statuses as the worker runs.
+  // 204 No Content on the GitHub side — the row flips through statuses as
+  // the worker runs. The app contract stays 202.
   return json({ ok: true, model }, 202);
 });

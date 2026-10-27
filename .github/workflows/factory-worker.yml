@@ -57,5 +57,5 @@ jobs:
           FACTORY_GH_PAT: ${{ secrets.FACTORY_GH_PAT }}
           REPO_OWNER: ${{ github.repository_owner }}
           PROJECT_ID: ${{ inputs.project_id || github.event.client_payload.project_id }}
-          MODEL: ${{ inputs.model || 'opencode/glm-5.3-flash' }}
+          MODEL: ${{ inputs.model || github.event.client_payload.model || 'opencode/glm-5.3-flash' }}
         run: bash scripts/worker.sh
