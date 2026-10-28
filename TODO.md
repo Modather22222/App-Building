@@ -193,16 +193,18 @@ Work order: each slice = implement → verify live → commit → next.
       accessible) return after ONE attempt instead of burning the 7m45s ladder; transient
       errors (rate limits, network) keep it; exhaustion now PRINTS the real stderr tail
       (never swallowed). 10/10 synthetic tests pass against the verbatim extracted function.
-- [x] Slice 3 — Scoped dispatch token (code shipped + verified; activation = one owner step):
-      request-build v16 prefers `FACTORY_DISPATCH_TOKEN` (fine-grained PAT,
-      Actions:write only, repo-scoped to Modather22222/App-Building) and falls back to
-      FACTORY_GH_PAT; fallback dispatch e2e re-verified live (202 + run cancelled
-      pre-push). OWNER ACTIVATION RECIPE: GitHub → Settings → Developer settings →
-      Fine-grained personal access tokens → Generate: repository access = Only select
-      repositories → App-Building; permissions = Actions: Read and write → copy value
-      into Supabase dashboard → Edge Functions → request-build → secrets as
-      `FACTORY_DISPATCH_TOKEN`. Then FACTORY_GH_PAT can be dropped from the function
-      secrets entirely.
+- [x] Slice 3 — Scoped dispatch token (ACTIVATED + fully verified 2026-10-28):
+      request-build v20 prefers `FACTORY_DISPATCH_TOKEN` (fine-grained PAT: Actions
+      Read+write, Contents Read-only, Metadata, repo-scoped to Modather22222/
+      App-Building) — FACTORY_GH_PAT is GONE from BOTH places: the Supabase function
+      secrets (deleted) and the GitHub repo secrets (deleted via API, 204). Clean-set
+      dispatch verified live: 202 with the fallback absent — the least-privilege
+      token alone runs dispatch. Repo secrets remaining: OPENCODE_API_KEY,
+      SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (all needed).
+      Debug journey worth keeping: 403s with a correctly-configured token were first
+      misread as a permission problem — root cause was the OLD token's value still in
+      the secret; the NEW token dispatched 204 from the first direct test. Lesson:
+      verify the credential VALUE directly (one curl) before blaming permissions.
 - [x] Slice 4 — R8 re-enable with keep rules (shipped; device-verify pending):
       generated apps: templates/app/build.yml scaffold now wires minify + writes
       proguard-rules.pro (idempotent python edit) — keeps io.flutter.** (kills the
