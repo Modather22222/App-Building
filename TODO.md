@@ -124,6 +124,21 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
       GH secret auto-promoted into the pair on first build → dashboard is the single
       management surface for add/replace/rotate/disable
 
+- [~] Chat + build-kick hardening pass (shipped 35091a4 + 8d93269, device verification pending):
+  - bootstrap MERGES local turns instead of clobbering — opening a thread and sending
+    before the fetch landed used to wipe the new turns (they "disappeared", then
+    "reordered" back once their own insert landed + a later restore ran)
+  - stable restore ordering: created_at ties no longer flap (id tiebreak)
+  - assistant replies: one quiet persistence retry before degrading to memory-only
+  - project-store failures surface the server's verbatim reason (no more generic-only
+    "could not reach the factory" masks)
+  - quota refusals are DURABLE failed rows (trigger records status=failed + refused=true +
+    friendly error instead of raising) — verified live: over-limit insert returns 201 with
+    the refusal recorded; refused attempts don't consume quota; meter excludes them; retry
+    clears the flag
+  - owner plan bumped pro→scale for dev comfort (today's 40 test rows exhausted the pro quota —
+    the original "apps didn't go at all" blocker)
+
 ## Phase 4 — GitHub Actions build & delivery
 
 - [x] Workflow: ubuntu-latest, Flutter 3.47.7 (pinned), Gradle cache, `timeout-minutes: 20`, analyze + test gates — first run patched green in 8m36s (build succeeded)
