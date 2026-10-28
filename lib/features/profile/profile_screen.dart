@@ -271,6 +271,7 @@ class _PlanCard extends ConsumerWidget {
             ? 'Free'
             : (backendProfile!.plan[0].toUpperCase() + backendProfile.plan.substring(1));
     final limit = PlanLimits.of(session == null ? 'free' : backendProfile?.plan ?? 'free');
+    final isUnlimited = session != null && backendProfile?.plan == 'unlimited';
     final used = projectsThisMonth.clamp(0, limit);
 
     return Card(
@@ -304,7 +305,11 @@ class _PlanCard extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: AppTokens.gapLg),
-            _Meter(label: 'Projects / month', used: used, total: limit),
+            _Meter(
+              label: 'Projects / month',
+              used: projectsThisMonth,
+              total: isUnlimited ? 0 : limit,
+            ),
             const SizedBox(height: AppTokens.gapMd),
             FilledButton.tonal(
               onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
@@ -347,22 +352,24 @@ class _Meter extends StatelessWidget {
           children: [
             Text(label, style: text.titleSmall),
             Text(
-              '$used / $total',
+              total <= 0 ? '$used · unlimited' : '$used / $total',
               style: text.labelLarge?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppTokens.radiusPill),
-          child: LinearProgressIndicator(
-            value: total == 0 ? 0.0 : used / total,
-            minHeight: 4,
-            backgroundColor: colors.surfaceContainerHighest.withValues(
-              alpha: 0.5,
+        if (total > 0) ...[
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppTokens.radiusPill),
+            child: LinearProgressIndicator(
+              value: used / total,
+              minHeight: 4,
+              backgroundColor: colors.surfaceContainerHighest.withValues(
+                alpha: 0.5,
+              ),
             ),
           ),
-        ),
+        ],
       ],
     );
   }

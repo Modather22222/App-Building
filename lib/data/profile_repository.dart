@@ -12,6 +12,7 @@ class PlanLimits {
     'starter': 10,
     'pro': 30,
     'scale': 100,
+    'unlimited': 0, // 0 = no cap; the meter renders it as "unlimited"
   };
 
   static int of(String plan) => map[plan] ?? 3;
