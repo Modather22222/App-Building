@@ -25,9 +25,16 @@ permissions:
 
 jobs:
   build-apk:
-    name: Build APK (${{ inputs.app_dir }})
+    name: Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # Phase 6 B1 — dispatch inputs reach scripts ONLY through env vars, never
+    # via ${{ inputs.* }} interpolation inside `run:` (a crafted app_dir used
+    # to be able to break out of a quoted shell context on the runner). The
+    # worker + DB constrain app_dir to ^[A-Za-z0-9_-]{1,64}$ as well.
+    env:
+      APP_DIR: ${{ inputs.app_dir }}
+      DART_NAME: ${{ inputs.dart_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -46,17 +53,17 @@ jobs:
           cache: true
 
       - name: Build app sources
-        working-directory: ${{ inputs.app_dir }}
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
         run: |
           set -e
+          cd "$APP_DIR"
           # Generated projects contain only lib/ + pubspec.yaml + tests —
           # scaffold Android here so the agent never hand-writes gradle.
           if [ ! -d android ]; then
-            flutter create . --platforms android --org com.appbuilding --project-name "${{ inputs.dart_name }}"
+            flutter create . --platforms android --org com.appbuilding --project-name "$DART_NAME"
           fi
           MAN=android/app/src/main/AndroidManifest.xml
           if ! grep -q 'android.permission.INTERNET' "$MAN"; then
@@ -153,19 +160,17 @@ jobs:
           PY
 
       - name: Build APK (release, signed)
-        working-directory: ${{ inputs.app_dir }}
-        run: flutter build apk --release
+        run: cd "$APP_DIR" && flutter build apk --release
 
       - name: Build AAB (release, signed — Play-ready)
-        working-directory: ${{ inputs.app_dir }}
-        run: flutter build appbundle --release
+        run: cd "$APP_DIR" && flutter build appbundle --release
 
       - name: Publish APK + AAB to the app's own release
         env:
           GH_TOKEN: ${{ github.token }}
-        working-directory: ${{ inputs.app_dir }}
         run: |
-          TAG="af-$(basename '${{ inputs.app_dir }}')"
+          cd "$APP_DIR"
+          TAG="af-$(basename "$APP_DIR")"
           gh release view "$TAG" >/dev/null 2>&1 || \
             gh release create "$TAG" --latest --title "Latest APK build" \
               --notes "Rolling test build from App Building CI."

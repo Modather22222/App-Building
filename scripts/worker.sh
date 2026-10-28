@@ -18,6 +18,16 @@ FACTORY_DIR="$(pwd)" # repo checkout root; used for templates below
 : "${SUPABASE_URL:?}" "${SUPABASE_SERVICE_ROLE_KEY:?}" "${PROJECT_ID:?}"
 : "${REPO_OWNER:?}" "${MODEL:?}"
 
+# Phase 6 B1 — the project id is client-generated and flows into file paths,
+# git refs, release tags AND workflow-dispatch inputs. Anything outside this
+# charset (shell metacharacters, slashes, dots for traversal) must die here,
+# before it touches a single command. Same rule as the DB CHECK constraint
+# (projects_id_format) and the edge function's early rejection.
+if [[ ! "$PROJECT_ID" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then
+  echo "::error::refusing to run: PROJECT_ID fails ^[A-Za-z0-9_-]{1,64}$"
+  exit 1
+fi
+
 # The CLI requires provider-prefixed model refs ("opencode/<id>"); bare ids
 # fail opencode's resolution with a cryptic server-side UnknownError.
 case "$MODEL" in

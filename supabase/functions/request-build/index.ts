@@ -78,6 +78,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: "project_id is required" }, 400);
   }
 
+  // Phase 6 B1 — same charset the worker and the DB CHECK enforce. The id
+  // flows into file paths, release tags and workflow-dispatch inputs; reject
+  // anything that could escape those contexts before any DB or GitHub work.
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(projectId)) {
+    return json({ error: "invalid project_id" }, 400);
+  }
+
   const { data: project, error: projectErr } = await admin
     .from("projects")
     .select("id, user_id, status, dispatched_at")
