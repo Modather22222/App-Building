@@ -434,7 +434,28 @@ if [[ -z "$FINAL_CONCLUSION" ]]; then
   fail "build runner timed out (~27 min) — repo: ${BUILD_REPO}"
 fi
 if [[ "$FINAL_CONCLUSION" != "success" ]]; then
-  fail "APK build failed — see https://github.com/${BUILD_REPO}/actions/runs/${FINAL_RUN_ID:-unknown}"
+  # Phase 5 — failure taxonomy: read the failed job's log tail and translate
+  # the machine error into a plain-language reason on the card. The raw tail
+  # stays in the run log; the row keeps the friendly version + run link.
+  TAXONOMY_TAIL=""
+  if [[ -n "${FINAL_RUN_ID:-}" ]]; then
+    TAXONOMY_TAIL=$(gh run view "$FINAL_RUN_ID" -R "$BUILD_REPO" --log-failed 2>/dev/null | tail -n 200 || true)
+  fi
+  FRIENDLY="The APK build failed on the runner — see https://github.com/${BUILD_REPO}/actions/runs/${FINAL_RUN_ID:-unknown}"
+  if [[ -n "$TAXONOMY_TAIL" ]]; then
+    if grep -qiE "failed host lookup|couldn.?t resolve pub\.dev|network is unreachable|connection (reset|refused)|early EOF" <<<"$TAXONOMY_TAIL"; then
+      FRIENDLY="The build couldn't reach pub.dev (network hiccup on the runner) — retry; it usually clears."
+    elif grep -qiE "compilation (failed|error)|compiler message|error: .+\.dart" <<<"$TAXONOMY_TAIL"; then
+      FRIENDLY="The generated code didn't compile — retry to regenerate; the factory retries the agent once."
+    elif grep -qiE "FAILURE: Build failed with an exception|Gradle task assembleRelease" <<<"$TAXONOMY_TAIL"; then
+      FRIENDLY="The Android build step failed (Gradle) — retry; if it repeats the generated app needs a fix."
+    elif grep -qiE "you have exceeded|rate limit|secondary rate" <<<"$TAXONOMY_TAIL"; then
+      FRIENDLY="The build hit GitHub's rate limiter — retry in a few minutes."
+    elif grep -qiE "run was cancelled|cancellation requested" <<<"$TAXONOMY_TAIL"; then
+      FRIENDLY="The build run was cancelled (timeout or manual stop)."
+    fi
+  fi
+  fail "${FRIENDLY}"
 fi
 
 # --- 5. asset url + ready ----------------------------------------------------------------

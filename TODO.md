@@ -231,9 +231,11 @@ Work order: each slice = implement → verify live → commit → next.
       chat was pinned to the drained free model (429 every turn, silently broken for
       everyone once the free pool emptied). Now uses the resolved id; live-verified
       200 with a real plan proposal via paid glm-5.3-flash.
-- [ ] Slice 7 — Failure taxonomy: worker reads the failed run's log tail on failure and
-      maps patterns → plain-language error on the row (pub.dev network, compile error,
-      gradle failure, burst limiter, infra stall); the app already surfaces it verbatim.
+- [x] Slice 7 — Failure taxonomy (shipped; patterns prove out on the next real failure):
+      on a failed build run the worker pulls the failed steps' log tail
+      (gh run view --log-failed, last 200 lines) and translates: pub.dev network
+      hiccup / dart compile failure / Gradle step failure / rate limiter / cancelled
+      run → plain-language error on the row (run link preserved in the message tail).
 - [ ] Slice 8 — Telemetry: activation funnel (signup → first chat → first plan → first
       build → first download) as a SQL view over existing tables + one client event for
       download taps (insert-only RLS events table).
