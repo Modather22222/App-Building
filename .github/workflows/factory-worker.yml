@@ -54,7 +54,6 @@ jobs:
           SUPABASE_URL: https://loeaiuktjmhxeoxpyqjl.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
-          FACTORY_GH_PAT: ${{ secrets.FACTORY_GH_PAT }}
           REPO_OWNER: ${{ github.repository_owner }}
           PROJECT_ID: ${{ inputs.project_id || github.event.client_payload.project_id }}
           MODEL: ${{ inputs.model || github.event.client_payload.model || 'opencode/glm-5.3-flash' }}

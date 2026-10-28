@@ -331,29 +331,22 @@ patch_state pushing
 
 # --- account pool -----------------------------------------------------------------------
 # Bootstrap — which account does the factory manage? Fully DB-driven:
-#   factory_settings['factory_owner'] = GitHub username, or 'none' to disable
-#   factory_settings['factory_pat']   = that account's PAT (service-only table)
-# Every run ensures the pair's row exists (resurrect if deleted, never
-# overwrite). First run promotes the legacy GH secret into the settings;
-# user edits always win (ignore-duplicates).
-if [[ -n "${FACTORY_GH_PAT:-}" ]]; then
-  sb_settings_put factory_owner "$REPO_OWNER"
-  sb_settings_put factory_pat "$FACTORY_GH_PAT"
-fi
+#   factory_settings['factory_owner']        = GitHub username, or 'none' to disable
+#   factory_settings['factory_pat_secret_id'] = vault secret id holding that PAT
+# The PAT lives ENCRYPTED in supabase_vault (Phase 6) — the settings pair and
+# the accounts table never hold plaintext. Every run ensures the pair's row
+# exists (resurrect if deleted, never overwrite).
 SETTINGS=$(curl -sS -m 20 \
-  "${SUPABASE_URL}/rest/v1/factory_settings?key=in.(\"factory_owner\",\"factory_pat\")&select=key,value" \
+  "${SUPABASE_URL}/rest/v1/factory_settings?key=in.(\"factory_owner\",\"factory_pat_secret_id\")&select=key,value" \
   -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
 OWNER_SETTING=$(jq -r '.[] | select(.key == "factory_owner") | .value // empty' <<<"$SETTINGS")
-PAT_SETTING=$(jq -r '.[] | select(.key == "factory_pat") | .value // empty' <<<"$SETTINGS")
+SECRET_ID_SETTING=$(jq -r '.[] | select(.key == "factory_pat_secret_id") | .value // empty' <<<"$SETTINGS")
 if [[ "$OWNER_SETTING" == "none" ]]; then
   echo "factory-managed account disabled (factory_settings.factory_owner = none)"
-elif [[ -n "$OWNER_SETTING" && -n "$PAT_SETTING" ]]; then
+elif [[ -n "$OWNER_SETTING" && -n "$SECRET_ID_SETTING" ]]; then
   sb_rpc ensure_factory_account "$(jq -nc \
-    --arg o "$OWNER_SETTING" --arg pat "$PAT_SETTING" '{p_owner:$o, p_pat:$pat}')"
-elif [[ -n "${FACTORY_GH_PAT:-}" ]]; then
-  sb_rpc ensure_factory_account "$(jq -nc \
-    --arg o "$REPO_OWNER" --arg pat "$FACTORY_GH_PAT" '{p_owner:$o, p_pat:$pat}')"
+    --arg o "$OWNER_SETTING" --arg sid "$SECRET_ID_SETTING" '{p_owner:$o, p_pat_secret_id:$sid}')"
 fi
 
 # Claim the least-recently-used account, then pre-flight its PAT. A broken
