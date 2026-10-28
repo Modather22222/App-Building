@@ -203,11 +203,15 @@ Work order: each slice = implement → verify live → commit → next.
       into Supabase dashboard → Edge Functions → request-build → secrets as
       `FACTORY_DISPATCH_TOKEN`. Then FACTORY_GH_PAT can be dropped from the function
       secrets entirely.
-- [ ] Slice 4 — R8 re-enable with keep rules: generated apps + the factory app get
-      proguard-rules.pro preserving the flutter plugin layer (io.flutter.**) — kills the
-      pigeon reflective-dispatch white-screen family while shrinking app dex (~2-3 MB).
-      templates/app/build.yml re-enables minify WITH the rules file; device-verify a
-      real generated app before considering it done.
+- [x] Slice 4 — R8 re-enable with keep rules (shipped; device-verify pending):
+      generated apps: templates/app/build.yml scaffold now wires minify + writes
+      proguard-rules.pro (idempotent python edit) — keeps io.flutter.** (kills the
+      pigeon reflective-dispatch white-screen family) + @Keep rules + `-dontwarn
+      com.google.android.play.core.**` (engine references Play Core split-install
+      classes absent from direct-APK builds — Flutter's own missing_rules.txt says
+      the same); factory app: isMinifyEnabled=true + same rules — local release
+      build GREEN (54.2MB universal, R8 engaged: the pre-fix build failed exactly
+      at the R8 task). Owner: install a fresh CI build to device-verify launch.
 - [ ] Slice 5 — CI hygiene: action bumps (checkout v4→v5 to kill Node20 warnings,
       setup-java, flutter-action latest), ubuntu-latest → 26.04 when the image lands.
 - [x] Slice 6 — Abuse guards (shipped + verified):

@@ -60,9 +60,38 @@ jobs:
             sed -i '/<manifest /a\
                 <uses-permission android:name="android.permission.INTERNET"/>' "$MAN"
           fi
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/isMinifyEnabled = true/isMinifyEnabled = false/' android/app/build.gradle.kts
-          fi
+          # Phase 5 — R8 ON with flutter-plugin keeps: shrinking app dex
+          # (~2-3 MB) is safe once the reflectively-resolved plugin layer is
+          # preserved — the pigeon-dispatch white-screen family
+          # (shared_preferences_android et al.) came from R8 renaming those
+          # symbols. Idempotent; falls back to template defaults cleanly.
+          python3 - <<'PY'
+          import os, re
+          gradle = 'android/app/build.gradle.kts'
+          if os.path.exists(gradle):
+              src = open(gradle).read()
+              if 'proguard-rules.pro' not in src:
+                  src = re.sub(
+                      r'(isMinifyEnabled\s*=\s*true)',
+                      r'\1\n                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")',
+                      src, count=1)
+                  open(gradle, 'w').write(src)
+                  print("gradle: proguard wiring added")
+          rules = 'android/app/proguard-rules.pro'
+          if not os.path.exists(rules):
+              open(rules, 'w').write(
+                  '# Flutter plugin layer is resolved reflectively (pigeon dispatch,\n'
+                  '# plugin registry) — preserve it; app code + other libs still shrink.\n'
+                  '-keep class io.flutter.** { *; }\n'
+                  '# Engine references Play Core split-install classes (deferred\n'
+                  '# components) absent from direct-APK builds; paths never execute.\n'
+                  '-dontwarn com.google.android.play.core.**\n'
+                  '# Honor androidx @Keep annotations (several plugins rely on them).\n'
+                  '-keep class * { @androidx.annotation.Keep <fields>; }\n'
+                  '-keep class * { @androidx.annotation.Keep <methods>; }\n'
+                  '-keep @androidx.annotation.Keep class * { *; }\n')
+              print("proguard rules written")
+          PY
           python3 - <<'PY'
           import xml.dom.minidom
           xml.dom.minidom.parse('android/app/src/main/AndroidManifest.xml')
