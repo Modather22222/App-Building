@@ -44,17 +44,14 @@ jobs:
           unzip -q /tmp/rclone.zip -d /tmp
           sudo mv "/tmp/rclone-v${RCLONE_VER}-linux-amd64/rclone" /usr/local/bin/rclone
 
-      - name: Upload to B2 (rclone over the S3 API)
+      - name: Upload to B2 (rclone, native B2 backend)
         env:
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
-          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
         run: |
-          rclone config create b2 s3 \
-            provider=Backblaze \
-            access_key_id "$B2_KEY_ID" \
-            secret_access_key "$B2_APP_KEY" \
-            endpoint "$B2_S3_ENDPOINT"
+          # Native B2 backend — the bucket-scoped key's S3 layer 403s on the
+          # HEAD-before-write, the native API is fully proven.
+          rclone config create b2 b2 account "$B2_KEY_ID" key "$B2_APP_KEY"
           STAMP=$(date -u +%Y-%m-%d)
           rclone copyto backup.dump.gz "b2:app-building/backups/backup-$STAMP.dump.gz"
           rclone copyto backup.sha256 "b2:app-building/backups/backup-$STAMP.sha256"
