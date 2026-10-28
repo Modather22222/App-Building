@@ -1,0 +1,71 @@
+# Nightly database backup — pg_dump (Postgres 17 client) -> Backblaze B2.
+#
+# Retention is handled by the BUCKET LIFECYCLE RULE on B2 (backups/ files
+# auto-hide after 14 days, deleted 1 day later) — no cleanup step here.
+#
+# Secrets:
+#   DATABASE_URL   — the Supabase SESSION-POOLER connection string with the
+#                    password in place (IPv4; runners have no IPv6)
+#   B2_KEY_ID / B2_APP_KEY — the bucket-scoped "appbuilding-backup" key
+#   B2_BUCKET / B2_S3_ENDPOINT — app-building / s3.eu-central-003.backblazeb2.com
+
+name: Nightly DB backup
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: pg_dump -> Backblaze B2
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Dump database (custom format, checksummed)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Version-exact client inside the official postgres image: a runner
+          # pg_dump older than the server refuses to run.
+          docker run --rm -v "$PWD:/out" postgres:17-alpine \
+            pg_dump --no-owner --no-privileges -Fc -f /out/backup.dump "$DATABASE_URL"
+          sha256sum backup.dump | cut -d' ' -f1 > backup.sha256
+          gzip backup.dump
+          ls -lh backup.dump.gz
+
+      - name: Upload to B2 (rclone over the S3 API)
+        env:
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_S3_ENDPOINT: ${{ secrets.B2_S3_ENDPOINT }}
+        run: |
+          rclone config create b2 s3 \
+            provider=Backblaze \
+            access_key_id "$B2_KEY_ID" \
+            secret_access_key "$B2_APP_KEY" \
+            endpoint "$B2_S3_ENDPOINT"
+          STAMP=$(date -u +%Y-%m-%d)
+          rclone copyto backup.dump.gz "b2:app-building/backups/backup-$STAMP.dump.gz"
+          rclone copyto backup.sha256 "b2:app-building/backups/backup-$STAMP.sha256"
+          echo "---- backups in the bucket ----"
+          rclone lsjson "b2:app-building/backups" | tail -n 8
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          SUPABASE_URL: https://loeaiuktjmhxeoxpyqjl.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          # Route through the alert consumer (dispatched to the owner's
+          # webhook within 10 minutes).
+          curl -sS -m 20 -X POST "$SUPABASE_URL/rest/v1/factory_alerts" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "content-type: application/json" \
+            -d '{"kind":"backup_failed","detail":"nightly pg_dump to B2 failed - see the run log"}' \
+            > /dev/null 2>&1 || true
+          echo "backup failed — alert written"
