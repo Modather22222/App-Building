@@ -192,7 +192,17 @@ of apps per account.
    per-account keystore → update that account's KEYSTORE_* secrets → installed apps
    need one uninstall (signature change). Backups: keystores + passwords live in the
    scratch dir — owner must copy them into a password manager.
-4. H-P5: refusal policy layer + post-plan classifier + plan audit log
+4. ~~Advisor findings + DB tightenings~~ **DONE 2026-10-28 (phase6_db_tightenings)** —
+   length caps on prompt/content/name/title (8k/8k/100/200, rejection proven), funnel FK
+   indexed, `touch_updated_at` search_path pinned, all 6 RLS policies rewritten with
+   `(select auth.uid())` initplans (advisor auth_rls_initplan ×6 → 0), `assert_rate_ok`
+   revoked from public/anon/authenticated → service_role only (proven via
+   has_function_privilege). Advisors after: security = only the 3 intentional
+   service-only tables (INFO) + leaked-password protection (dashboard toggle, owner
+   step); performance = only unused-index INFO on the brand-new funnel index.
+   **Owner step remaining: enable leaked-password protection in the dashboard
+   (Auth → Providers → password → leaked password protection).**
+5. H-P5: refusal policy layer + post-plan classifier + plan audit log
 5. Rotate `FACTORY_DISPATCH_TOKEN` (pre-launch promise); revoke `anon` execute on `assert_rate_ok`; enable leaked-password protection; prompt/content length caps (DB CHECK + client)
 6. Move PATs into supabase_vault; validate `apkUrl` host allow-list client-side
 
