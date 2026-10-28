@@ -222,7 +222,14 @@ of apps per account.
    dispatch-token rotation (deferred to pre-public-launch by owner decision).
 
 ### Phase 7 — Reliability & operations
-1. Worker heartbeat (stage patch every ~5 min) + sweep contract (ignore active run ids)
+1. ~~Worker heartbeat + sweep contract~~ **DONE 2026-10-28 (8c00e6e)** — background
+   toucher refreshes updated_at every 5 min for the worker lifetime (sweep only kills
+   genuinely-dead workers); `dispatched` rows get a 60-min leash (no worker exists to
+   heartbeat during runner queue waits); row read is status-checked (Supabase blips
+   fail honestly instead of "row vanished" + green run); poll queries by head_sha
+   server-side with a 60s timeout and 5-consecutive-error classification. Live proof:
+   full build through the new worker (ready, heartbeat + poll exercised). Sweep
+   behavior test: fresh survived / 31-min-stale failed / 45-min-dispatched survived.
 2. Quarantine only on definitive verdicts + re-validation sweep for inactive rows
 3. Poll by `head_sha` via REST; per-call timeouts; classify poll errors
 4. Alert consumer: pg_cron → edge fn → email/Telegram webhook on `factory_alerts` + sweep actions + quarantine events
