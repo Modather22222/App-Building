@@ -193,12 +193,16 @@ Work order: each slice = implement → verify live → commit → next.
       accessible) return after ONE attempt instead of burning the 7m45s ladder; transient
       errors (rate limits, network) keep it; exhaustion now PRINTS the real stderr tail
       (never swallowed). 10/10 synthetic tests pass against the verbatim extracted function.
-- [ ] Slice 3 — Scoped dispatch token (the "no broad PAT" headline):
-      request-build prefers `FACTORY_DISPATCH_TOKEN` (fine-grained PAT, Actions:write
-      only, repo-scoped to Modather22222/App-Building) and falls back to
-      FACTORY_GH_PAT; owner creates the token in the GitHub dashboard → drop it into
-      the function secrets → dispatch e2e re-verified → classic PAT then rotatable
-      away from the dispatch path.
+- [x] Slice 3 — Scoped dispatch token (code shipped + verified; activation = one owner step):
+      request-build v16 prefers `FACTORY_DISPATCH_TOKEN` (fine-grained PAT,
+      Actions:write only, repo-scoped to Modather22222/App-Building) and falls back to
+      FACTORY_GH_PAT; fallback dispatch e2e re-verified live (202 + run cancelled
+      pre-push). OWNER ACTIVATION RECIPE: GitHub → Settings → Developer settings →
+      Fine-grained personal access tokens → Generate: repository access = Only select
+      repositories → App-Building; permissions = Actions: Read and write → copy value
+      into Supabase dashboard → Edge Functions → request-build → secrets as
+      `FACTORY_DISPATCH_TOKEN`. Then FACTORY_GH_PAT can be dropped from the function
+      secrets entirely.
 - [ ] Slice 4 — R8 re-enable with keep rules: generated apps + the factory app get
       proguard-rules.pro preserving the flutter plugin layer (io.flutter.**) — kills the
       pigeon reflective-dispatch white-screen family while shrinking app dex (~2-3 MB).

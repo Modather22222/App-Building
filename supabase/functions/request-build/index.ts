@@ -6,7 +6,9 @@
 // factory-worker.yml on the factory repo.
 //
 // Secrets (set in Supabase function secrets):
-//   FACTORY_GH_PAT   — classic PAT with repo+workflow scope, for dispatching
+//   FACTORY_DISPATCH_TOKEN — fine-grained PAT, Actions:write ONLY, repo-scoped
+//     to the factory repo (Phase 5: the least-privilege dispatch token)
+//   FACTORY_GH_PAT   — legacy classic PAT fallback (kept until rotation)
 //   FACTORY_MODEL    — optional override of the codegen model id
 //
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.
@@ -132,15 +134,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // private.enforce_project_quota() — unforgeable and retry-friendly.
   // This function only owns auth, ownership, and dispatch.
 
-  const pat = Deno.env.get("FACTORY_GH_PAT");
+  // Token order: FACTORY_DISPATCH_TOKEN (fine-grained PAT, Actions:write only,
+  // repo-scoped to the factory repo — the least-privilege dispatch token this
+  // function exists to hold) → FACTORY_GH_PAT (classic, broad) fallback so the
+  // pipeline keeps running until the owner rotates. Phase 5: no BROAD PAT
+  // required on the dispatch path anymore.
+  const pat = Deno.env.get("FACTORY_DISPATCH_TOKEN") ||
+    Deno.env.get("FACTORY_GH_PAT");
   if (!pat) {
     await failRow(
       admin,
       projectId,
-      "The factory is not configured yet (missing FACTORY_GH_PAT)",
+      "The factory is not configured yet (missing FACTORY_DISPATCH_TOKEN)",
     );
     return json(
-      { error: "The factory is not configured yet (missing FACTORY_GH_PAT)" },
+      { error: "The factory is not configured yet (missing FACTORY_DISPATCH_TOKEN)" },
       503,
     );
   }
