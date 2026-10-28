@@ -250,7 +250,11 @@ of apps per account.
    dispose guards after every await, copyWith preserves refused/buildInfo
    (tested), apkUrl https+host allow-list before OS launch (tested).
 4. ~~Alert consumer~~ **DONE (see 2)** — sweep + quarantine + daily-ceiling all feed it
-5. Sentry (Flutter + edge functions) + uptime monitor on the rolling release URL
+5. ~~Sentry~~ **DONE 2026-10-28 (e528073)** — sentry_flutter 10.2.0 (dart-define
+   gated: empty DSN = disabled, tests/backend-less untouched), @sentry/deno in both
+   edge functions capturing lookup/claim/dispatch/LLM failures, CI passes SENTRY_DSN
+   into artifacts. DSN set as a repo secret; test event verified 200 against the
+   ingest endpoint. Owner step: mirror SENTRY_DSN into the Supabase function secrets.
 6. Backups: Supabase Pro (PITR) or nightly `pg_dump` to private storage
 7. Flutter fixes: delete-tombstones, outbox for failed message writes, greeting-over-history fix, router `refreshListenable`, `ref.mounted` guards, `copyWith` fix, `apkUrl` launch validation (https + host allow-list)
 
