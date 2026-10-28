@@ -202,7 +202,14 @@ of apps per account.
    step); performance = only unused-index INFO on the brand-new funnel index.
    **Owner step remaining: enable leaked-password protection in the dashboard
    (Auth → Providers → password → leaked password protection).**
-5. H-P5: refusal policy layer + post-plan classifier + plan audit log
+5. ~~H-P5: refusal policy layer + post-plan classifier + plan audit log~~
+   **DONE 2026-10-28** — SYSTEM refusal policy (agent-chat v17), deterministic
+   abuse-pattern gate on every emitted plan (17/17 synthetic: 10 abuse blocked,
+   7 legit allowed incl. habit/fitness/find-my-phone/antivirus edge wordings),
+   `plan_audit` trail (public + RLS-no-policies, service-write, survives account
+   deletion), same gate in worker.sh as last line of defense. Live e2e: abusive
+   turn refused with no plan; benign turn emitted "Habit Streaks" → audited
+   allowed. Future hardening: LLM-based classifier to replace the regex screen.
 5. Rotate `FACTORY_DISPATCH_TOKEN` (pre-launch promise); revoke `anon` execute on `assert_rate_ok`; enable leaked-password protection; prompt/content length caps (DB CHECK + client)
 6. Move PATs into supabase_vault; validate `apkUrl` host allow-list client-side
 

@@ -22,7 +22,34 @@ Rules:
 PLAN: <short app name> | <one-sentence description of the app to build>
 - Propose the plan promptly; don't drag out clarification for simple requests.
 - Keep replies under 120 words. Never include code in chat.
-- Generated apps run on Flutter stable 3.47, Material 3, work offline, use only pub.dev packages, no binary assets (icons/emoji only).`;
+- Generated apps run on Flutter stable 3.47, Material 3, work offline, use only pub.dev packages, no binary assets (icons/emoji only).
+- Refuse (reply WITHOUT a PLAN line) if the app's primary purpose is surveillance or spying on people, tracking someone without their consent, harassment, stalking, malware, phishing or credential theft — briefly explain why and, when obvious, suggest a legitimate alternative.`;
+
+// Phase 6 H-P5 — content gate (layer 2). The SYSTEM prompt refuses malicious
+// requests, but prompts can be steered; every emitted plan is screened
+// against high-signal abuse patterns. A hit strips the plan (no build
+// button) and lands in the audit trail, which survives account deletion.
+const ABUSE_PATTERNS = [
+  /\bkey\s?log(ger|ging)?\b/i,
+  /\bkeystroke/i,
+  /\bspy(ing|ware)?\b/i,
+  /\b(stealth|covert|hidden)\s+(app|cam(era)?|mic(rophone)?|recorder|monitor(ing)?|track(er|ing)?)\b/i,
+  /\b(track|monitor)(ing)?\s+(someone|people|my (partner|spouse|wife|husband|girlfriend|boyfriend|ex)|employees?)\b/i,
+  /\b(harass\w*|bull(y|ying|ied)|dox\w*|stalk\w*)\b/i,
+  /\b(phish(ing)?|credential harvesting?)\b/i,
+  /\b(password|otp|pin)\s?(steal(ing)?|grab(ber)?|crack(ing)?|bypass)\b/i,
+  /\b(malware|ransomware|virus|trojan|botnet|ddos|rootkit)\b/i,
+  /\b(sms|text|call|whatsapp)\s+(intercept(ion)?|sniff(ing)?|forward(ing)?)\b/i,
+  /\bintercept(ion|s|ed)?\b/i,
+  /\bsteal(ing)?\s+(passwords?|credentials?|otp|pins?)\b/i,
+  /\bforward(ing)?\s+(incoming\s+)?(sms|texts?|messages?|calls?)\b/i,
+  /\bhidden\s+(camera|photos?|recording|record)\b/i,
+];
+
+const REFUSAL_REPLY =
+  "I can't help build that one — it looks designed to monitor, harass, or " +
+  "harm someone, which App Building doesn't do. If you meant something " +
+  "legitimate, describe the app from its user's point of view and I'll scope it.";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -82,8 +109,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Phase 5 — abuse guard: per-user chat rate limit (dashboard-tunable via
-  // factory_settings['rate_chat_hour'], default 40/hour). Message insert +
-  // reply are one user action; the count happens before any LLM spend.
+  // factory_settings['rate_chat_hour'], default 40/hour). The count happens
+  // before any LLM spend.
   {
     const { error: rateErr } = await admin.rpc("assert_rate_ok", {
       p_user: userData.user.id,
@@ -164,6 +191,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
   const reply = lines.join("\n").trim();
+
+  // Phase 6 H-P5 — screen + audit every emitted plan. The audit write is
+  // best-effort: it must never break the chat.
+  if (plan) {
+    const lastUser = [...turns].reverse().find((t) => t.role === "user")?.content ?? "";
+    const screened = `${plan.app_name} ${plan.summary} ${lastUser}`;
+    const hit = ABUSE_PATTERNS.find((p) => p.test(screened)) ?? null;
+    try {
+      await admin.from("plan_audit").insert({
+        user_id: userData.user.id,
+        app_name: plan.app_name,
+        summary: plan.summary,
+        prompt_snippet: lastUser.slice(0, 500),
+        decision: hit ? "blocked" : "allowed",
+        reason: hit ? hit.source : null,
+      });
+    } catch (_) { /* audit is best-effort */ }
+    if (hit) {
+      return json({ reply: REFUSAL_REPLY, plan: null });
+    }
+  }
 
   return json({ reply, plan });
 });

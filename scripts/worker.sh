@@ -196,6 +196,20 @@ APP_NAME=$(jq -r '.name' <<< "$ROW")
 USER_PROMPT=$(jq -r '.prompt' <<< "$ROW")
 PLAN_SUMMARY=$(jq -r '.summary' <<< "$ROW")
 
+# Phase 6 H-P5 — content gate, last line of defense: the chat agent applies
+# this screen too, but the worker is where the build actually happens. A hit
+# refuses the build and logs the refusal to the audit trail.
+ABUSE_RE='key ?log(ger|ging)?|keystroke|spy(ing|ware)?|(stealth|covert|hidden) +(app|cam(era)?|mic(rophone)?|recorder|monitor(ing)?|track(er|ing)?)|(track|monitor)(ing)? +(someone|people|my +(partner|spouse|wife|husband|girlfriend|boyfriend|ex)|employees?)|harass|bull(y|ying|ied)|dox|stalk|phish(ing)?|credential harvesting?|(password|otp|pin) ?(steal(ing)?|grab(ber)?|crack(ing)?|bypass)|steal(ing)? +(passwords?|credentials?|otp|pins?)|malware|ransomware|trojan|botnet|ddos|rootkit|(sms|text|call|whatsapp) +(intercept(ion)?|sniff(ing)?|forward(ing)?)|intercept(ion|s|ed)?|forward(ing)? +(incoming +)?(sms|texts?|messages?|calls?)'
+if printf '%s\n%s' "$USER_PROMPT" "$PLAN_SUMMARY" | grep -qiE "$ABUSE_RE"; then
+  curl -sS -m 20 -X POST "${SUPABASE_URL}/rest/v1/plan_audit" \
+    -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "content-type: application/json" \
+    -d "$(jq -nc --arg p "${PROJECT_ID}" --arg n "$APP_NAME" --arg s "$PLAN_SUMMARY" --arg u "${USER_PROMPT:0:500}" \
+      '{project_id:$p, app_name:$n, summary:$s, prompt_snippet:$u, decision:"blocked", reason:"worker content gate"}')" > /dev/null || true
+  fail "this request violates the App Building content policy — the build was refused"
+fi
+
 SLUG=$(printf '%s' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
 if [[ ! "$SLUG" =~ ^[a-z0-9-]+$ ]] || [[ -z "$SLUG" ]]; then SLUG=flutter-app; fi
 DART_NAME=$(printf '%s' "$SLUG" | sed -E 's/-+/_/g')
