@@ -99,7 +99,11 @@ class ChatRepository {
           .from('messages')
           .select()
           .eq('chat_id', chatId)
-          .order('created_at', ascending: true);
+          .order('created_at', ascending: true)
+          // Stable tie-break: created_at ties (same-microsecond inserts) must
+          // not flap between fetches — id ordering is deterministic even when
+          // it isn't chronological.
+          .order('id', ascending: true);
       return [
         for (final r in rows as List)
           MessageRow(

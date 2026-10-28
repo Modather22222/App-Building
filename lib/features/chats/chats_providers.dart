@@ -172,7 +172,7 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
         _seedGreeting();
         return;
       }
-      state = [
+      final server = [
         for (final row in rows)
           ChatMessage(
             id: row.id,
@@ -183,6 +183,16 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
             at: row.createdAt,
           ),
       ];
+      // Merge, don't clobber: turns sent while this fetch was in flight (and
+      // the reply streaming onto them) stay in place. The old overwrite wiped
+      // them, they vanished from the thread, then "reordered" back into view
+      // once their own insert landed and a later bootstrap restored them.
+      final serverIds = {for (final m in server) m.id};
+      final local = [
+        for (final m in state)
+          if (!serverIds.contains(m.id) && !m.id.startsWith(_welcomePrefix)) m,
+      ];
+      state = [...server, ...local];
     } catch (_) {
       _seedGreeting();
     }
@@ -269,7 +279,21 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
             planSummary: finalReply.planSummary,
           );
         } catch (_) {
-          // Degrade: assistant reply only lives in memory.
+          // Degrade — but one quiet retry first: a flaky moment shouldn't
+          // cost the whole reply on the next app start.
+          await Future<void>.delayed(const Duration(seconds: 4));
+          try {
+            await store.insertMessage(
+              id: finalReply.id,
+              chatId: arg,
+              role: 'assistant',
+              content: finalReply.text,
+              planName: finalReply.planName,
+              planSummary: finalReply.planSummary,
+            );
+          } catch (_) {
+            // Still unreachable: reply stays in memory only.
+          }
         }
       })(),
     );

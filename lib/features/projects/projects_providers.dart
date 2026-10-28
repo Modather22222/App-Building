@@ -208,6 +208,15 @@ class ProjectsState extends Notifier<List<AppProject>> {
       _applyError(project.id, e.message);
       _markFailed(project.id);
       return;
+    } on ProjectStoreOffline catch (e) {
+      // The server's own reason (constraint, RLS, connectivity detail) —
+      // shown verbatim so failures are diagnosable from the screen.
+      _applyError(
+        project.id,
+        e.message ?? 'Could not reach the factory — retry below.',
+      );
+      _markFailed(project.id);
+      return;
     } catch (_) {
       _applyError(project.id, 'Could not reach the factory — retry below.');
       _markFailed(project.id);
@@ -266,8 +275,8 @@ class ProjectsState extends Notifier<List<AppProject>> {
       );
     } on PostgrestException catch (e) {
       if (e.code != '23505') {
-        // Not a duplicate-key case: surface and stop.
-        _applyError(id, 'Could not reach the factory — retry again below.');
+        // Not a duplicate-key case: surface the real reason and stop.
+        _applyError(id, e.message);
         _markFailed(id);
         return;
       }

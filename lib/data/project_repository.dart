@@ -6,7 +6,13 @@ import 'supabase_config.dart';
 ///
 /// Mirrors [ChatRepository]: every call degrades via [ProjectStoreOffline]
 /// and providers keep working from memory (`never brick the app`).
-class ProjectStoreOffline implements Exception {}
+/// The store call failed for a non-quota reason. Carries the server's own
+/// error text when PostgREST supplied one — surfaced verbatim so failure
+/// reasons are diagnosable from the screen the user is looking at.
+class ProjectStoreOffline implements Exception {
+  const ProjectStoreOffline([this.message]);
+  final String? message;
+}
 
 /// The DB quota trigger (private.enforce_project_quota) refused the insert —
 /// the message text travels through PostgREST and is shown verbatim in UI.
@@ -44,7 +50,7 @@ class ProjectRepository {
       if (e.message.contains('Monthly limit reached')) {
         throw ProjectLimitReached(e.message);
       }
-      throw ProjectStoreOffline();
+      throw ProjectStoreOffline(e.message);
     } catch (_) {
       throw ProjectStoreOffline();
     }
