@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/tokens.dart';
 import '../../data/models.dart';
@@ -110,6 +111,23 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                     );
                   },
+                ),
+                const Divider(height: 1, indent: AppTokens.gutter),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('Privacy & terms'),
+                  subtitle: const Text('What we store, in plain language'),
+                  subtitleTextStyle: TextStyle(
+                    color: colors.onSurfaceVariant,
+                    fontSize: 13,
+                  ),
+                  onTap: () => launchUrl(
+                    Uri.parse(
+                      'https://raw.githubusercontent.com/Modather22222/'
+                      'App-Building/main/PRIVACY.md',
+                    ),
+                    mode: LaunchMode.externalApplication,
+                  ),
                 ),
               ],
             ),

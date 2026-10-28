@@ -243,8 +243,12 @@ Work order: each slice = implement → verify live → commit → next.
       select revoked, FK cascade keeps counts honest) + `funnel_view` (30-day
       windows, service-role only) — verified live: insert 201, view counts correct.
       Read the funnel: `select * from funnel_view` in the dashboard SQL editor.
-- [ ] Slice 9 — Distribution & trust: direct-APK now / Play Store decision doc,
-      PRIVACY.md + terms summary + link in profile screen, beta recruitment kit.
+- [x] Slice 9 — Distribution & trust (shipped; Play Store is post-beta):
+      direct-APK distribution locked (rolling + per-app release links); PRIVACY.md —
+      plain-language what-we-store / what-we-never-do / your-control + terms summary;
+      BETA.md — recruitment post template, ordered feedback questions, plan-size
+      calibration plan, launch-blocking checklist; profile screen "Privacy & terms"
+      tile opens the hosted doc.
 
 ## Known gaps in the current MVP build (by design)
 
