@@ -130,6 +130,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: true, already: "in-flight" }, 200);
   }
 
+  // Phase 5 — abuse guard: per-user build rate (factory_settings
+  // ['rate_build_hour'], default 6/hour). Checked after the idempotent paths
+  // so double-taps never get rate-bumped, before the LLM/runner spend.
+  {
+    const { error: rateErr } = await admin.rpc("assert_rate_ok", {
+      p_user: userData.user.id,
+      p_action: "build",
+    });
+    if (rateErr) {
+      await failRow(admin, projectId, rateErr.message);
+      return json({ error: rateErr.message }, 429);
+    }
+  }
+
   // NOTE: plan quota is enforced at INSERT time by the DB trigger
   // private.enforce_project_quota() — unforgeable and retry-friendly.
   // This function only owns auth, ownership, and dispatch.

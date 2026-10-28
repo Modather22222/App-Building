@@ -210,9 +210,21 @@ Work order: each slice = implement → verify live → commit → next.
       real generated app before considering it done.
 - [ ] Slice 5 — CI hygiene: action bumps (checkout v4→v5 to kill Node20 warnings,
       setup-java, flutter-action latest), ubuntu-latest → 26.04 when the image lands.
-- [ ] Slice 6 — Abuse guards: per-user rate limits (chat msgs/hour, build dispatches/
-      hour) enforced by a DB function called from both edge fns; limits editable via
-      factory_settings (dashboard-managed); spending alerts → factory_alerts rows.
+- [x] Slice 6 — Abuse guards (shipped + verified):
+      `assert_rate_ok(p_user, p_action)` — chat 40 msgs/hour, builds 6/hour, both
+      tunable via factory_settings (rate_chat_hour / rate_build_hour) from the
+      dashboard; daily-build ceiling (25+) writes private.factory_alerts rows
+      (service-context only — authenticated RPC callers can't fabricate alerts).
+      Hooked into agent-chat v11 + request-build v17 (after the idempotent paths,
+      before LLM/runner spend; build-refusal marks the row failed for retry).
+      Verified: below-limit pass, at-limit raise (friendly text), alert row at 25/day.
+      En route: POSTGRES function must live in PUBLIC schema for supabase-js rpc
+      (private is invisible to PostgREST) + service-role guard for alert writes.
+- [x] Chat hotfix riding slice 6 — agent-chat v11: the request body re-resolved
+      `FACTORY_CHAT_MODEL || DEFAULT_MODEL` inline, IGNORING the DB-resolved model —
+      chat was pinned to the drained free model (429 every turn, silently broken for
+      everyone once the free pool emptied). Now uses the resolved id; live-verified
+      200 with a real plan proposal via paid glm-5.3-flash.
 - [ ] Slice 7 — Failure taxonomy: worker reads the failed run's log tail on failure and
       maps patterns → plain-language error on the row (pub.dev network, compile error,
       gradle failure, burst limiter, infra stall); the app already surfaces it verbatim.

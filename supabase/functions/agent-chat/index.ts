@@ -81,6 +81,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: "history must contain at least one turn" }, 400);
   }
 
+  // Phase 5 — abuse guard: per-user chat rate limit (dashboard-tunable via
+  // factory_settings['rate_chat_hour'], default 40/hour). Message insert +
+  // reply are one user action; the count happens before any LLM spend.
+  {
+    const { error: rateErr } = await admin.rpc("assert_rate_ok", {
+      p_user: userData.user.id,
+      p_action: "chat",
+    });
+    if (rateErr) {
+      return json({ error: rateErr.message }, 429);
+    }
+  }
+
   const key = Deno.env.get("OPENCODE_ZEN_KEY");
   if (!key) {
     return json(
@@ -104,7 +117,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const body = {
-    model: Deno.env.get("FACTORY_CHAT_MODEL") || DEFAULT_MODEL,
+    model: model, // the RESOLVED id (DB → env → default). The old inline
+    // re-resolution ignored the DB and pinned chat to the drained free
+    // model — 429 on every turn once the free pool emptied.
     messages: [{ role: "system", content: SYSTEM }, ...turns],
     max_tokens: 700,
     temperature: 0.4,
