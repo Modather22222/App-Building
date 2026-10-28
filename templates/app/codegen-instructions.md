@@ -1,4 +1,4 @@
-# App Factory — codegen instructions template.
+# App Building — codegen instructions template.
 # Placeholders (substituted with jq by scripts/worker.sh, never by shell):
 #   {{NAME}}    app display name from the plan chunk
 #   {{DART}}    valid dart package identifier for pubspec

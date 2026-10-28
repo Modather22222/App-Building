@@ -142,7 +142,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('App Factory', style: text.headlineSmall),
+                      Text('App Building', style: text.headlineSmall),
                       Text(
                         'From prompt to installable APK',
                         style: text.bodySmall?.copyWith(

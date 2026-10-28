@@ -1,4 +1,4 @@
-// App Factory — agent-chat edge function.
+// App Building — agent-chat edge function.
 //
 // Real planning conversation for the chat screen. The app POSTs the visible
 // history (including the message just sent); the function calls the LLM and
@@ -15,7 +15,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const ZEN_URL = "https://opencode.ai/zen/v1/chat/completions";
 const DEFAULT_MODEL = "deepseek-v4.1-flash-free";
 
-const SYSTEM = `You are the App Factory agent inside a mobile app that builds Flutter apps.
+const SYSTEM = `You are the App Building agent inside a mobile app that builds Flutter apps.
 Rules:
 - Chat briefly, warm, practical. Ask at most ONE clarifying question per turn.
 - As soon as the request is concrete enough (main screens + features clear), end your reply with a final line EXACTLY in this format:

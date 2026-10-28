@@ -24,7 +24,7 @@ class MockChatService {
   MockChatService._();
 
   static const String greeting =
-      "Hey! I'm your app factory agent. Describe a Flutter app and I'll scope "
+      "Hey! I'm your App Building agent. Describe a Flutter app and I'll scope "
       'it with you, generate the full project, push it to GitHub and build an '
       'APK you can install. What should we build today?';
 
@@ -80,7 +80,7 @@ class MockChatService {
       '2. The 3\u20135 must-have screens, in flow order\n'
       '3. Whether you need accounts from day one\n\n'
       'Rough is fine. Once I know the flow, I will draft the build plan and '
-      'start the factory.',
+      'kick off the build.',
     );
   }
 

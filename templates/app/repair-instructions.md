@@ -1,4 +1,4 @@
-# App Factory — self-repair instructions template.
+# App Building — self-repair instructions template.
 # Placeholder: {{FAILURES}} = captured flutter test output (truncated).
 
 A Flutter project is in the CURRENT directory (lib/, pubspec.yaml, test/).

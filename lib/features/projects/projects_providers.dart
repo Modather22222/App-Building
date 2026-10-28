@@ -145,11 +145,11 @@ class ProjectsState extends Notifier<List<AppProject>> {
         final message =
             (data is Map && data['error'] is String)
                 ? data['error'] as String
-                : 'Build factory returned status $status.';
+                : 'Build service returned status $status.';
         _applyError(id, message);
       }
     } catch (_) {
-      _applyError(id, 'Could not reach the build factory — retry shortly.');
+      _applyError(id, 'Could not reach the build service — retry shortly.');
     }
   }
 
@@ -214,7 +214,7 @@ class ProjectsState extends Notifier<List<AppProject>> {
       // shown verbatim so failures are diagnosable from the screen.
       _applyError(
         project.id,
-        e.message ?? 'Could not reach the factory — retry below.',
+        e.message ?? 'Could not reach the build service — retry below.',
       );
       _markFailed(project.id);
       return;

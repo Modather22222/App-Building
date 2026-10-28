@@ -1,11 +1,11 @@
-# App Factory — Design Notes (v1)
+# App Building — Design Notes (v1)
 
 Source: `dribbble-world-class-mobile-design` skill. Build target: Flutter, Material 3 (Android-first APK channel).
 
 ## Direction Chosen
 
 - **Mode:** Crafted Utility (AI assistant + dev tool; trust-constrained per user: "trustworthy and clean, no fancy")
-- **Subject:** App Factory — chat agent that turns prompts into shipped MVP Flutter apps; audience: Flutter developers
+- **Subject:** App Building — chat agent that turns prompts into shipped MVP Flutter apps; audience: Flutter developers
 - **Platform soul:** Material 3 Expressive, restrained (M3 `NavigationBar`, `FilledButton`, sheets)
 - **Color theme:** Forked *Field* (Productivity/Crafted Utility) light palette + *Midnight Pro*-style semantic dark override; primary tuned violet→indigo `#6366F1` / `#818CF8` for trust
 - **Typography:** Roboto Native system scale (no font bundling); mono (`monospace`) only for build metadata

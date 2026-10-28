@@ -1,4 +1,4 @@
-name: Factory worker
+name: App Building worker
 
 # Executed when a user confirms "Build this app":
 #   - workflow_dispatch from the request-build edge function (project_id input)

@@ -98,7 +98,7 @@ RLS: `projects_all_own` (authenticated). Anonymous reads → 200 with 0 rows (e2
 - Model: `opencode/glm-5.3-flash-free` by default (workflow_dispatch `model` input / `FACTORY_MODEL`
   function secret override).
 - Generated repos contain ONLY agent-written sources (pubspec, lib/, test, README); the copied
-  `templates/app/build.yml` runs `flutter create --platforms android --org com.appfactory` to
+  `templates/app/build.yml` runs `flutter create --platforms android --org com.appbuilding` to
   scaffold gradle/manifest, then applies the known-good fixes (INTERNET permission, minify off for
   the R8/shared_preferences incident) — the agent never writes gradle.
 - **Smoke-test gate + self-repair (in the worker, free public minutes)**: generated code must pass
@@ -144,7 +144,7 @@ and secondary rate limits never cap the factory:
 - **Worker wiring (`scripts/worker.sh`)**: at stage 3 (after codegen) it (a) self-seeds its
   own factory account (`Prefer: resolution=ignore-duplicates` on `on_conflict=owner` — never
   overwrites dashboard-edited PATs), (b) claims an account, (c) runs every subsequent gh/git
-  operation on that account's PAT against `claimed_owner/app-factory-outputs`.
+  operation on that account's PAT against `claimed_owner/app-building-outputs`.
 - **Secrets inventory**: per-account PAT → DB only; factory repo GH secrets stay
   `OPENCODE_API_KEY` + `SUPABASE_SERVICE_ROLE_KEY` + `FACTORY_GH_PAT` (now bootstrap/dispatch
   only); build repos use stock `github.token`; the app passes nothing.
@@ -223,7 +223,7 @@ vs transient errors.
   didn't clear it — the window outlives the backoff and parallel retries keep the counter hot.
 - **Wall #2 — build-dispatch burst**: same family, refused ×2.
 - **Architecture response — the build MONOREPO** (commit fbde491): one repo
-  `app-factory-outputs`, each app = `apps/<project-id>/` + per-app release tag `af-<project-id>`.
+  `app-building-outputs`, each app = `apps/<project-id>/` + per-app release tag `af-<project-id>`.
   - Zero repo creation at build time (one repo, created once) → the limiter is gone by design.
   - Worker clones (depth 1), replaces its app folder, pushes; the build workflow (one copy at the
     repo root, refreshed on every push) is dispatched with `app_dir`; polls match OUR push's

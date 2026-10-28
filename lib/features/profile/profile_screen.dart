@@ -106,7 +106,7 @@ class ProfileScreen extends ConsumerWidget {
                   onTap: () {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('App Factory \u00b7 MVP build 1.0.0'),
+                        content: Text('App Building \u00b7 MVP build 1.0.0'),
                       ),
                     );
                   },
@@ -321,7 +321,7 @@ class _PlanCard extends ConsumerWidget {
             const SizedBox(height: AppTokens.gapSm),
             Text(
               'Live usage — server-derived, resets each calendar month. '
-              'The factory enforces this limit server-side.',
+              'The build service enforces this limit server-side.',
               style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],

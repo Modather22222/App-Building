@@ -1,4 +1,4 @@
-// App Factory — request-build edge function.
+// App Building — request-build edge function.
 //
 // The app calls this when the user confirms "Build this app" (or retries a
 // failed project). It validates the caller's JWT, checks the project row

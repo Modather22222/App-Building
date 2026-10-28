@@ -1,5 +1,5 @@
 name: app_building
-description: "App Factory — an AI chat agent that designs, builds and ships MVP Flutter apps."
+description: "App Building — an AI chat agent that designs, builds and ships MVP Flutter apps."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev

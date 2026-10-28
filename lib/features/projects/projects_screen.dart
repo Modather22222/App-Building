@@ -279,7 +279,7 @@ class _EmptyProjects extends StatelessWidget {
             ),
             const SizedBox(height: AppTokens.gapLg),
             Text(
-              'No apps in the factory yet',
+              'No apps built yet',
               textAlign: TextAlign.center,
               style: text.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),

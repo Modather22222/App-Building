@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:app_building/core/theme/app_theme.dart';
 
 void main() {
-  test('App Factory ships an M3 theme with light + dark semantics', () {
+  test('App Building ships an M3 theme with light + dark semantics', () {
     final light = AppTheme.light();
     final dark = AppTheme.dark();
 

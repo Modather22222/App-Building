@@ -132,10 +132,10 @@ class _BuildTimeline extends StatelessWidget {
             const SizedBox(height: AppTokens.gapMd),
             Text(
               project.repo != null
-                  ? 'Build runs on GitHub Actions in the factory\u2019s '
-                      'shared build repo.'
-                  : 'The build starts on GitHub Actions once the factory '
-                      'dispatches it.',
+                  ? 'Build runs on GitHub Actions in the shared '
+                      'App Building build repo.'
+                  : 'The build starts on GitHub Actions once the build '
+                      'service dispatches it.',
               style: text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
             ),
           ],
@@ -270,7 +270,7 @@ class _FailureCard extends StatelessWidget {
                 Icon(Icons.error_outline_rounded, color: AppTokens.statusFailed),
                 const SizedBox(width: 10),
                 Text(
-                  'Factory report',
+                  'Build report',
                   style: text.titleSmall?.copyWith(
                     color: AppTokens.statusFailed,
                   ),

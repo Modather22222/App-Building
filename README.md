@@ -1,6 +1,7 @@
-# app_building
+# App Building
 
-A new Flutter project.
+AI chat agent that designs, builds and ships installable MVP Flutter apps:
+chat → OpenCode codegen → GitHub Actions APK → install.
 
 ## Getting Started
 

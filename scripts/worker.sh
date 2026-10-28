@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# App Factory — worker pipeline. One shell per project build:
+# App Building — worker pipeline. One shell per project build:
 #   1. read the projects row from Supabase
 #   2. opencode generates the Flutter sources into a clean dir
-#   3. claim a GitHub account from the pool → wire into its app-factory-outputs monorepo
+#   3. claim a GitHub account from the pool → wire into its app-building-outputs monorepo
 #   4. dispatch the generated repo's build.yml, poll until the APK lands
 #   5. update the row (ready + apk_url, or failed + where to look)
 #
@@ -319,7 +319,7 @@ while :; do
   sb_patch_acct "$CLAIM_ID" "$(jq -nc --arg e "$VERDICT" '{active:false, last_error:$e}')"
   echo "quarantined ${OWNER}: ${VERDICT}"
 done
-BUILD_REPO="${OWNER}/app-factory-outputs"
+BUILD_REPO="${OWNER}/app-building-outputs"
 export GH_TOKEN="$CLAIM_PAT"
 
 rm -f request.md repair.md /tmp/opencode-agent.log 2> /dev/null || true
@@ -367,10 +367,10 @@ mono_push() {
 }
 
 cd "$MONO"
-git config user.name "App Factory worker"
+git config user.name "App Building worker"
 git config user.email "workers@users.noreply.github.com"
 git add -A
-git commit -qm "App Factory: ${APP_NAME} (${PROJECT_ID})"
+git commit -qm "App Building: ${APP_NAME} (${PROJECT_ID})"
 with_retry "monorepo push" mono_push
 HEAD_SHA=$(git rev-parse HEAD)
 
