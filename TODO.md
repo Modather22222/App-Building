@@ -212,8 +212,10 @@ Work order: each slice = implement → verify live → commit → next.
       the same); factory app: isMinifyEnabled=true + same rules — local release
       build GREEN (54.2MB universal, R8 engaged: the pre-fix build failed exactly
       at the R8 task). Owner: install a fresh CI build to device-verify launch.
-- [ ] Slice 5 — CI hygiene: action bumps (checkout v4→v5 to kill Node20 warnings,
-      setup-java, flutter-action latest), ubuntu-latest → 26.04 when the image lands.
+- [x] Slice 5 — CI hygiene: actions/checkout v4→v5 in BOTH workflows (kills the Node20
+      deprecation warnings), setup-java v5 + flutter-action v2 already current.
+      NOTE: ubuntu-latest → 26.04 migration — check on the next GitHub runner-image
+      announcement; nothing pinned to 24 that breaks.
 - [x] Slice 6 — Abuse guards (shipped + verified):
       `assert_rate_ok(p_user, p_action)` — chat 40 msgs/hour, builds 6/hour, both
       tunable via factory_settings (rate_chat_hour / rate_build_hour) from the
