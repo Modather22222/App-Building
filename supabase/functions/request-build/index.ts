@@ -78,7 +78,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const { data: project, error: projectErr } = await admin
     .from("projects")
-    .select("id, user_id, status")
+    .select("id, user_id, status, dispatched_at")
     .eq("id", projectId)
     .maybeSingle();
   if (projectErr) {
@@ -92,6 +92,40 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (project.status === "ready") {
     return json({ ok: true, already: "ready" }, 200);
+  }
+
+  // Phase 5 — idempotency guard. 'generating' is ambiguous (a fresh
+  // pre-dispatch row vs the worker's first active stage), so the truth lives
+  // in dispatched_at: set exactly when THIS function claims a row, cleared by
+  // the app's resetForRetry. A row already in flight (dispatched, pushing,
+  // queued, building — or generating with a dispatch stamp) must not
+  // re-dispatch: that would race two identical worker runs.
+  const inflight =
+    ["dispatched", "pushing", "queued", "building"].includes(project.status) ||
+    (project.status === "generating" && project.dispatched_at !== null);
+  if (inflight) {
+    return json({ ok: true, already: "in-flight" }, 200);
+  }
+
+  // Atomic claim: the conditional update IS the race lock. Two concurrent
+  // callers for the same row can both pass the checks above; exactly one
+  // claim (matching generating-without-stamp or failed) returns a row and
+  // only that caller dispatches. The loser sees 0 rows and reports already.
+  const { data: claimed, error: claimErr } = await admin
+    .from("projects")
+    .update({
+      status: "dispatched",
+      dispatched_at: new Date().toISOString(),
+      error: null,
+    })
+    .or("and(status.eq.generating,dispatched_at.is.null),status.eq.failed")
+    .eq("id", projectId)
+    .select("id");
+  if (claimErr) {
+    return json({ error: "Claim failed" }, 500);
+  }
+  if (!claimed || claimed.length === 0) {
+    return json({ ok: true, already: "in-flight" }, 200);
   }
 
   // NOTE: plan quota is enforced at INSERT time by the DB trigger
@@ -155,11 +189,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
   }
 
-  // Phase 4: mark the dispatch-wait. The row sits 'dispatched' until the
-  // worker job actually starts (GitHub queues it against the account's
-  // concurrency ceiling); the worker's first stage patch flips it to
-  // 'generating'. DB-true queue visibility for the app banner.
-  await admin.from("projects").update({ status: "dispatched" }).eq("id", projectId);
+  // The claim above already flipped the row to 'dispatched' atomically —
+  // the old post-dispatch update is gone (it was the double-dispatch window).
 
   // 204 No Content on the GitHub side — the row flips through statuses as
   // the worker runs. The app contract stays 202.

@@ -98,6 +98,7 @@ class ProjectRepository {
         'status': 'generating',
         'error': null,
         'refused': false,
+        'dispatched_at': null,
         'stage_times': {'generating': atUtc},
         'updated_at': atUtc,
       }).eq('id', id);

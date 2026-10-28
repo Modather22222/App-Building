@@ -175,17 +175,48 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
       field makes gh reject EVERY poll cycle, and `2>/dev/null` hid the reason for the whole
       27-min window; poll stderr is now visible in worker logs
 
-## Phase 5 — Hardening & launch prep
+## Phase 5 — Hardening & launch prep (map locked 2026-10-28)
 
-- [ ] Secrets: scoped GitHub token per operation (repo create/dispatch/artifact) — no broad PAT in app
-- [ ] Retry idempotency guard: request-build refuses to dispatch when the project is already
-      in-flight (dispatched/generating/pushing/queued/building) — surfaced by a probe
-      double-dispatch firing two identical builds
-- [ ] Abuse guards: rate limits per user, spam detection on chat, spending-limit alerts
-- [ ] Failure taxonomy: maps CI errors → plain-language chat replies for users
-- [ ] Telemetry: activation funnel (onboard → first chat → first build → first download)
-- [ ] Play Store / direct-APK distribution decision; privacy policy + terms
-- [ ] Beta: 10–20 Flutter devs, collect feedback on plan sizes and agent quality
+Work order: each slice = implement → verify live → commit → next.
+
+- [x] Slice 1 — Retry idempotency guard (shipped, e2e-proven):
+      request-build v15 — 'generating' disambiguated by `dispatched_at` (set at claim,
+      cleared by the app's resetForRetry); in-flight rows (dispatched/pushing/queued/
+      building, or generating+stamp) return 200 already-in-flight without dispatching;
+      the claim is an ATOMIC conditional update (generating-without-stamp or failed) so
+      concurrent double-calls yield exactly ONE dispatch. Live proof: sequential
+      double-tap 202 → 200 already; true concurrent race → exactly one 202; both probe
+      runs cancelled pre-push (no pollution); probe cleaned up.
+- [ ] Slice 2 — Fail-fast error classification in worker `with_retry`:
+      permanent errors (couldn't find remote ref, repository not found, bad credentials,
+      terminal prompts disabled, workflow-scope refusal, permission denied) return
+      immediately instead of burning the 7m45s backoff ladder; transient errors (rate
+      limits, network hiccups) keep the ladder. Verify: bash -n + synthetic
+      classification test + next real build's behavior.
+- [ ] Slice 3 — Scoped dispatch token (the "no broad PAT" headline):
+      request-build prefers `FACTORY_DISPATCH_TOKEN` (fine-grained PAT, Actions:write
+      only, repo-scoped to Modather22222/App-Building) and falls back to
+      FACTORY_GH_PAT; owner creates the token in the GitHub dashboard → drop it into
+      the function secrets → dispatch e2e re-verified → classic PAT then rotatable
+      away from the dispatch path.
+- [ ] Slice 4 — R8 re-enable with keep rules: generated apps + the factory app get
+      proguard-rules.pro preserving the flutter plugin layer (io.flutter.**) — kills the
+      pigeon reflective-dispatch white-screen family while shrinking app dex (~2-3 MB).
+      templates/app/build.yml re-enables minify WITH the rules file; device-verify a
+      real generated app before considering it done.
+- [ ] Slice 5 — CI hygiene: action bumps (checkout v4→v5 to kill Node20 warnings,
+      setup-java, flutter-action latest), ubuntu-latest → 26.04 when the image lands.
+- [ ] Slice 6 — Abuse guards: per-user rate limits (chat msgs/hour, build dispatches/
+      hour) enforced by a DB function called from both edge fns; limits editable via
+      factory_settings (dashboard-managed); spending alerts → factory_alerts rows.
+- [ ] Slice 7 — Failure taxonomy: worker reads the failed run's log tail on failure and
+      maps patterns → plain-language error on the row (pub.dev network, compile error,
+      gradle failure, burst limiter, infra stall); the app already surfaces it verbatim.
+- [ ] Slice 8 — Telemetry: activation funnel (signup → first chat → first plan → first
+      build → first download) as a SQL view over existing tables + one client event for
+      download taps (insert-only RLS events table).
+- [ ] Slice 9 — Distribution & trust: direct-APK now / Play Store decision doc,
+      PRIVACY.md + terms summary + link in profile screen, beta recruitment kit.
 
 ## Known gaps in the current MVP build (by design)
 
