@@ -235,7 +235,20 @@ of apps per account.
     **DONE in slice 7.1** (same commit family): poll queries
     `actions/runs?head_sha=` server-side with `timeout 60` per call and a
     5-consecutive-error classification that fails honestly.
-2c. Quarantine only on definitive verdicts + re-validation sweep for inactive rows
+2c. ~~Quarantine only on definitive verdicts~~ **DONE 2026-10-28 (419ce90)** —
+   validate_pat returns verdict classes: definitive (401/403, missing scopes)
+   quarantines; TRANSIENT (transport failure, GitHub 5xx) only skips the account
+   for that run; the claim loop is bounded (6 attempts) so transient-only pools
+   fail honestly instead of looping. Re-validation cron deferred (rotation via
+   `rotate_factory_account` re-activates rows — the owner path covers it).
+2d. ~~Flutter reliability pack~~ **DONE 2026-10-28 (419ce90)** — delete tombstones
+   (poll can't resurrect), persistence outbox (failed message writes retry on a
+   6s timer instead of vanishing), greeting-over-history fix (outage keeps what's
+   on screen), ONE GoRouter with refreshListenable (no more navigation resets on
+   token refresh), AuthSession value equality (token refresh = no auth churn),
+   account re-keying on all three state notifiers (no cross-account leakage),
+   dispose guards after every await, copyWith preserves refused/buildInfo
+   (tested), apkUrl https+host allow-list before OS launch (tested).
 4. ~~Alert consumer~~ **DONE (see 2)** — sweep + quarantine + daily-ceiling all feed it
 5. Sentry (Flutter + edge functions) + uptime monitor on the rolling release URL
 6. Backups: Supabase Pro (PITR) or nightly `pg_dump` to private storage
