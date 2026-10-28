@@ -37,6 +37,13 @@ esac
 
 now() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
+# Phase 6 B2 — generated code is UNTRUSTED: `flutter test` compiles and
+# executes agent-authored Dart, and one planted line reading
+# Platform.environment would exfiltrate whatever is in scope. Factory
+# secrets therefore never enter the probe's environment (pub.dev needs no
+# credentials). Array form so it composes with `timeout`.
+UNTRUSTED_ENV=(env -u SUPABASE_SERVICE_ROLE_KEY -u OPENCODE_API_KEY -u GH_TOKEN -u FACTORY_GH_PAT)
+
 sb_patch() { # best-effort; must never break the pipeline itself
   curl -sS -m 20 -X PATCH \
     "${SUPABASE_URL}/rest/v1/projects?id=eq.${PROJECT_ID}" \
@@ -244,12 +251,22 @@ if [[ ! -f pubspec.yaml ]] || [[ ! -f lib/main.dart ]]; then
   fi
 fi
 
+# Phase 6 B2 — dependency supply-chain gate: the template allows pub.dev
+# hosted packages only. git/path sources and dependency_overrides can pull
+# arbitrary code from anywhere; reject before a single line executes.
+if grep -qE '^[[:space:]]*(git|path|hosted):' pubspec.yaml; then
+  fail "pubspec declares a non-pub.dev dependency source (git/path/hosted) — not allowed"
+fi
+if grep -qE '^dependency_overrides:' pubspec.yaml; then
+  fail "pubspec declares dependency_overrides — not allowed"
+fi
+
 # --- 2b. smoke-test gate + self-repair ------------------------------------------
 # Private repo build minutes are precious: verify the generated code compiles
 # and passes its own smoke test HERE (free public minutes), feeding failures
 # back to the model for up to 2 repair passes.
 
-flutter pub get > /dev/null 2>&1 || true
+"${UNTRUSTED_ENV[@]}" flutter pub get > /dev/null 2>&1 || true
 REPAIRS=0
 while :; do
   # The ERR trap inherits into command substitutions (even under set +e) —
@@ -260,7 +277,7 @@ while :; do
   # 15-min cap: a hung probe (network/pub stall) is infrastructure, not code —
   # without this the worker waits until GitHub's 60-min job kill, the row goes
   # stale, and only the watchdog sweep explains it (Unit Quiz, 2026-10-27).
-  TEST_LOG=$(timeout 900 flutter test 2>&1)
+  TEST_LOG=$(timeout 900 "${UNTRUSTED_ENV[@]}" flutter test 2>&1)
   TEST_STATUS=$?
   set -e
   trap 'fail "worker step failed at line $LINENO (see this run log)"' ERR
@@ -369,6 +386,15 @@ with_retry "monorepo clone" git clone -q "https://github.com/${BUILD_REPO}.git" 
 mkdir -p "${MONO}/apps"
 
 # Fresh generated tree into its app folder (retry overwrites cleanly).
+# Phase 6 B2 — enforce the codegen file allowlist MECHANICALLY: the agent is
+# told to write only pubspec.yaml + lib/ + test/ + README.md, but the monorepo
+# build executes whatever exists in the copied tree. Everything else (stray
+# gradle files, scripts, request.md, .dart_tool) is deleted here — the build
+# must never see unreviewed executable surface. pubspec.lock is kept: it pins
+# the resolved dependency set for a reproducible build.
+find "$WORK" -mindepth 1 -maxdepth 1 \
+  ! -name 'pubspec.yaml' ! -name 'pubspec.lock' ! -name 'lib' ! -name 'test' ! -name 'README.md' \
+  -exec rm -rf {} +
 MONO_APP="${MONO}/${APP_DIR}"
 rm -rf "$MONO_APP"
 mkdir -p "$MONO_APP"
