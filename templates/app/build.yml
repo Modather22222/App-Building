@@ -47,6 +47,10 @@ jobs:
 
       - name: Build app sources
         working-directory: ${{ inputs.app_dir }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEYSTORE_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
         run: |
           set -e
           # Generated projects contain only lib/ + pubspec.yaml + tests —
@@ -59,6 +63,18 @@ jobs:
             # Must land INSIDE the manifest element (appended after its line)
             sed -i '/<manifest /a\
                 <uses-permission android:name="android.permission.INTERNET"/>' "$MAN"
+          fi
+          # Release signing: decode the upload keystore + write key.properties.
+          # Absent secrets → the gradle patch below is skipped and the build
+          # falls back to debug signing (never fails a build over this).
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo -n "$KEYSTORE_BASE64" | base64 -d > android/app/upload-keystore.jks
+            {
+              echo "storeFile=upload-keystore.jks"
+              echo "storePassword=$KEYSTORE_PASSWORD"
+              echo "keyPassword=$KEYSTORE_PASSWORD"
+              echo "keyAlias=$KEYSTORE_ALIAS"
+            } > android/key.properties
           fi
           # Phase 5 — R8 ON with flutter-plugin keeps: shrinking app dex
           # (~2-3 MB) is safe once the reflectively-resolved plugin layer is
@@ -91,6 +107,44 @@ jobs:
                   '-keep class * { @androidx.annotation.Keep <methods>; }\n'
                   '-keep @androidx.annotation.Keep class * { *; }\n')
               print("proguard rules written")
+          # Release signing: wire key.properties into the flutter-created
+          # gradle (idempotent). Skipped when the keystore isn't present —
+          # debug-signed fallback, never a failed build.
+          if os.path.exists('android/key.properties') and os.path.exists(gradle):
+              src = open(gradle).read()
+              if 'keystoreProperties' not in src:
+                  loader = (
+                      'import java.util.Properties\n'
+                      'import java.io.FileInputStream\n\n'
+                      'val keystoreProperties = Properties()\n'
+                      'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+                      'if (keystorePropertiesFile.exists()) {\n'
+                      '    keystoreProperties.load(FileInputStream(keystorePropertiesFile))\n'
+                      '}\n\n'
+                  )
+                  src = loader + src  # imports must precede plugins{} — prepend
+                  signing = (
+                      '    signingConfigs {\n'
+                      '        create("release") {\n'
+                      '            if (keystorePropertiesFile.exists()) {\n'
+                      '                keyAlias = keystoreProperties["keyAlias"] as String\n'
+                      '                keyPassword = keystoreProperties["keyPassword"] as String\n'
+                      '                storeFile = file(keystoreProperties["storeFile"] as String)\n'
+                      '                storePassword = keystoreProperties["storePassword"] as String\n'
+                      '            }\n'
+                      '        }\n'
+                      '    }\n\n'
+                  )
+                  src = src.replace('    buildTypes {', signing + '    buildTypes {', 1)
+                  src = src.replace(
+                      'signingConfig = signingConfigs.getByName("debug")',
+                      'signingConfig = if (keystorePropertiesFile.exists())\n'
+                      '                signingConfigs.getByName("release")\n'
+                      '            else\n'
+                      '                signingConfigs.getByName("debug")',
+                      1)
+                  open(gradle, 'w').write(src)
+                  print("gradle: release signing wired")
           PY
           python3 - <<'PY'
           import xml.dom.minidom
@@ -98,11 +152,15 @@ jobs:
           print("manifest XML ok")
           PY
 
-      - name: Build APK (universal, release, debug-signed)
+      - name: Build APK (release, signed)
         working-directory: ${{ inputs.app_dir }}
         run: flutter build apk --release
 
-      - name: Publish APK to the app's own release
+      - name: Build AAB (release, signed — Play-ready)
+        working-directory: ${{ inputs.app_dir }}
+        run: flutter build appbundle --release
+
+      - name: Publish APK + AAB to the app's own release
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: ${{ inputs.app_dir }}
@@ -112,5 +170,6 @@ jobs:
             gh release create "$TAG" --latest --title "Latest APK build" \
               --notes "Rolling test build from App Building CI."
           gh release edit "$TAG" --latest \
-            --notes "Build #${{ github.run_number }} 📱 universal (all ABIs) · debug-signed (installable) · generated by App Building"
+            --notes "Build #${{ github.run_number }} 📱 universal (all ABIs) · signed (upload key) · AAB for Play · generated by App Building"
           gh release upload "$TAG" build/app/outputs/flutter-apk/app-release.apk --clobber
+          gh release upload "$TAG" build/app/outputs/bundle/release/app-release.aab --clobber

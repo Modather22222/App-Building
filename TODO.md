@@ -124,6 +124,22 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
       GH secret auto-promoted into the pair on first build → dashboard is the single
       management surface for add/replace/rotate/disable
 
+- [x] Beta remainings — keystore + signed .aab + app icon/splash (2026-10-28):
+  - upload keystore `app-building-upload.jks` generated (RSA 2048, 10000d, alias
+    app-building-upload); master copy + password live OUTSIDE the repo (scratch dir);
+    KEYSTORE_BASE64/PASSWORD/ALIAS set via gh on App-Building + all 3 outputs repos
+  - factory app: key.properties-driven signing with debug fallback (local builds
+    unchanged); CI (android-arm64.yml) decodes the keystore, builds signed APK + AAB,
+    publishes both to the rolling release
+  - generated apps: templates/app/build.yml decodes the keystore, python-wires
+    key.properties signing into the flutter-created gradle (idempotent, debug
+    fallback), builds signed APK + AAB, uploads both to the per-app release
+  - NOTE: signature changes from debug → upload key mean previously installed
+    builds must be UNINSTALLED once before installing the signed build
+  - app icon + splash: mobile-phone glyph on brand indigo (parametric Pillow set in
+    assets/brand), flutter_launcher_icons (adaptive + all densities + iOS) +
+    flutter_native_splash (light/dark + android-12) — launch-blocking item closed
+
 - [x] Identity pass — "App Factory" → "App Building" everywhere visible (shipped 2026-10-28):
   - agent says App Building: agent-chat v9 deployed (SYSTEM "You are the App Building agent…");
     seeded greeting + all "factory" copy reworded ("build service/_report_/built yet" etc.)

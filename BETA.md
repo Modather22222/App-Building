@@ -42,8 +42,13 @@ Feedback loop per tester (ask in this order):
 
 ## Launch-blocking checklist
 
-- [ ] App icon + splash (Phase 1 item — replaces the default Flutter icon)
-- [ ] PRIVACY.md hosted at a public URL (raw GitHub link works for review)
-- [ ] Real upload keystore + CI secret wiring
+- [x] App icon + splash (mobile-phone glyph, adaptive + all densities + iOS, light/dark splash)
+- [x] Real upload keystore — `app-building-upload.jks` (RSA 2048, 10000 days, alias
+      `app-building-upload`); local master copy in the scratch dir; secrets
+      (KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEYSTORE_ALIAS) set on App-Building AND
+      all 3 app-building-outputs repos; CI signs APK + AAB; local builds fall back
+      to debug key when key.properties is absent
+- [x] PRIVACY.md hosted at a public URL (raw GitHub link works for review)
+- [ ] CI-signed .aab verified on the runner (first signed build — watch the next run)
 - [ ] R8 device-verified on a real generated app (slice 4 follow-up)
 - [ ] Accessibility pass (Phase 1 item)
