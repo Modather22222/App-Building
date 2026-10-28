@@ -272,7 +272,6 @@ class _PlanCard extends ConsumerWidget {
             : (backendProfile!.plan[0].toUpperCase() + backendProfile.plan.substring(1));
     final limit = PlanLimits.of(session == null ? 'free' : backendProfile?.plan ?? 'free');
     final isUnlimited = session != null && backendProfile?.plan == 'unlimited';
-    final used = projectsThisMonth.clamp(0, limit);
 
     return Card(
       child: Padding(
