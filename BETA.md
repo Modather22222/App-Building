@@ -49,6 +49,9 @@ Feedback loop per tester (ask in this order):
       all 3 app-building-outputs repos; CI signs APK + AAB; local builds fall back
       to debug key when key.properties is absent
 - [x] PRIVACY.md hosted at a public URL (raw GitHub link works for review)
-- [ ] CI-signed .aab verified on the runner (first signed build — watch the next run)
+- [x] CI-signed .aab verified on the runner (run 40659323875): rolling release now
+      carries app-release.apk + app-release.aab; downloaded APK signature matches the
+      upload key cert (CN=App Building Upload, SHA-256 693ec31a…). Generated apps get
+      the same treatment from templates/app/build.yml on their next build.
 - [ ] R8 device-verified on a real generated app (slice 4 follow-up)
 - [ ] Accessibility pass (Phase 1 item)
