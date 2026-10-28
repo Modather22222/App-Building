@@ -170,7 +170,12 @@ of apps per account.
 ## Phase 6+ roadmap
 
 ### Phase 6 — Security hardening (BLOCKERS; before any public exposure)
-1. B1: PROJECT_ID charset validation (worker + DB CHECK) + env-mediated workflow inputs
+1. ~~B1: PROJECT_ID charset validation (worker + DB CHECK) + env-mediated workflow inputs~~
+   **DONE 2026-10-28 (324a07a)** — worker gate (14/14 synthetic incl. shell breakout,
+   traversal, subst), DB `projects_id_format` CHECK (23514 proven), edge v23 early
+   rejection (400 proven), build.yml inputs ONLY via job env (zero `inputs.*` in run:;
+   full live build shipped signed APK+AAB through the new script — row ready, release
+   verified on the LRU-chosen account)
 2. B2: env scrubbing around flutter invocations + mechanical allowlist prune + pubspec source/pin validation
 3. B3: per-account signing keys + rotation runbook
 4. H-P5: refusal policy layer + post-plan classifier + plan audit log
