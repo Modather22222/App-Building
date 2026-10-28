@@ -53,5 +53,6 @@ Feedback loop per tester (ask in this order):
       carries app-release.apk + app-release.aab; downloaded APK signature matches the
       upload key cert (CN=App Building Upload, SHA-256 693ec31a…). Generated apps get
       the same treatment from templates/app/build.yml on their next build.
-- [ ] R8 device-verified on a real generated app (slice 4 follow-up)
-- [ ] Accessibility pass (Phase 1 item)
+- [x] R8 device-verified on a real generated app (slice 4 follow-up) — owner verified the
+      signed, R8-minified rolling build works without issues on device (2026-10-28)
+- [ ] Accessibility pass (Phase 1 item) — the last launch blocker

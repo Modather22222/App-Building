@@ -139,6 +139,11 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
   - app icon + splash: mobile-phone glyph on brand indigo (parametric Pillow set in
     assets/brand), flutter_launcher_icons (adaptive + all densities + iOS) +
     flutter_native_splash (light/dark + android-12) — launch-blocking item closed
+  - R8 DEVICE-VERIFIED: owner ran the signed, R8-minified rolling build — works
+    without issues on device (the white-screen family stays dead)
+  - dispatch token: owner declined regeneration — FACTORY_DISPATCH_TOKEN stays as-is
+    (accepted residual: the value transited this chat once; rotate before any public
+    launch or when the beta widens)
 
 - [x] Identity pass — "App Factory" → "App Building" everywhere visible (shipped 2026-10-28):
   - agent says App Building: agent-chat v9 deployed (SYSTEM "You are the App Building agent…");
