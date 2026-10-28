@@ -187,12 +187,12 @@ Work order: each slice = implement → verify live → commit → next.
       concurrent double-calls yield exactly ONE dispatch. Live proof: sequential
       double-tap 202 → 200 already; true concurrent race → exactly one 202; both probe
       runs cancelled pre-push (no pollution); probe cleaned up.
-- [ ] Slice 2 — Fail-fast error classification in worker `with_retry`:
+- [x] Slice 2 — Fail-fast error classification in worker `with_retry` (shipped, synth-proven):
       permanent errors (couldn't find remote ref, repository not found, bad credentials,
-      terminal prompts disabled, workflow-scope refusal, permission denied) return
-      immediately instead of burning the 7m45s backoff ladder; transient errors (rate
-      limits, network hiccups) keep the ladder. Verify: bash -n + synthetic
-      classification test + next real build's behavior.
+      terminal prompts disabled, workflow-scope refusal, permission denied, resource not
+      accessible) return after ONE attempt instead of burning the 7m45s ladder; transient
+      errors (rate limits, network) keep it; exhaustion now PRINTS the real stderr tail
+      (never swallowed). 10/10 synthetic tests pass against the verbatim extracted function.
 - [ ] Slice 3 — Scoped dispatch token (the "no broad PAT" headline):
       request-build prefers `FACTORY_DISPATCH_TOKEN` (fine-grained PAT, Actions:write
       only, repo-scoped to Modather22222/App-Building) and falls back to

@@ -132,14 +132,36 @@ with_retry() { # with_retry <label> <cmd...> — bursty POST endpoints trip GitH
   local label="$1"; shift
   local delays=(15 30 60 120 240)
   local attempt=0
+  local log
+  log="$(mktemp)"
   for d in 0 "${delays[@]}"; do
     if [[ $attempt -gt 0 ]]; then
       echo "  retrying ${label} in ${d}s (attempt $((attempt + 1)))"
       sleep "$d"
     fi
-    if "$@"; then return 0; fi
+    if "$@" 2>>"$log"; then
+      rm -f "$log"
+      return 0
+    fi
+    # Phase 5 — fail-fast classification: ~8 min of backoff on a failure that
+    # can never succeed (dead ref, revoked/under-scoped PAT, vanished repo)
+    # wastes runner minutes and buries the cause. Structural errors return
+    # immediately; everything else (rate limits, network) keeps the ladder.
+    if tail -c 4000 "$log" 2>/dev/null | grep -qiE \
+      "couldn.?t find remote ref|repository not found|authentication failed|bad credentials|terminal prompts disabled|refusing to allow .*token to create or update workflow|permission to .* denied|resource not accessible"; then
+      echo "::error::${label}: permanent failure — not retryable:"
+      tail -n 5 "$log" 2>/dev/null || true
+      rm -f "$log"
+      return 1
+    fi
     attempt=$((attempt + 1))
   done
+  # All attempts exhausted — surface the real reason before bailing
+  # (stderr must never vanish into /dev/null; that once hid a poll bug
+  # for a whole 27-min window).
+  echo "::error::${label}: exhausted ${#delays[@]} retries; last stderr:"
+  tail -n 8 "$log" 2>/dev/null || true
+  rm -f "$log"
   return 1
 }
 
