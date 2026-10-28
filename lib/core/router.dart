@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/models.dart';
 import '../data/providers.dart';
 import '../features/auth/auth_screen.dart';
 import '../features/chats/chat_screen.dart';
@@ -12,19 +14,27 @@ import '../features/projects/projects_screen.dart';
 import '../features/shell/home_shell.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  // Redirects re-evaluate whenever onboarding/session state changes.
-  final onboarded = ref.watch(onboardingProvider);
-  final session = ref.watch(authProvider);
+  // Phase 7 — ONE GoRouter for the app's lifetime. The old provider watched
+  // auth/onboarding directly and rebuilt the whole router on every auth
+  // event (including token refreshes), resetting the navigation stack
+  // mid-flow. State changes now drive `refreshListenable`, and `redirect`
+  // reads the mirrored notifiers.
+  final onboarded = ValueNotifier<bool>(ref.read(onboardingProvider));
+  final session = ValueNotifier<AuthSession?>(ref.read(authProvider));
+  ref
+    ..listen(onboardingProvider, (_, bool v) => onboarded.value = v)
+    ..listen(authProvider, (_, AuthSession? v) => session.value = v);
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/chats',
+    refreshListenable: Listenable.merge([onboarded, session]),
     redirect: (context, state) {
       final path = state.uri.path;
-      if (!onboarded) {
+      if (!onboarded.value) {
         return path == '/onboarding' ? null : '/onboarding';
       }
       if (path == '/onboarding') return '/chats';
-      if (session == null) return path == '/auth' ? null : '/auth';
+      if (session.value == null) return path == '/auth' ? null : '/auth';
       if (path == '/auth') return '/chats';
       return null;
     },
@@ -66,4 +76,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+  ref.onDispose(() {
+    router.dispose();
+    onboarded.dispose();
+    session.dispose();
+  });
+  return router;
 });

@@ -90,10 +90,13 @@ class AuthState extends Notifier<AuthSession?> {
 final authProvider = NotifierProvider<AuthState, AuthSession?>(AuthState.new);
 
 class ProfileState extends Notifier<ProfileRow?> {
+  bool _disposed = false;
+
   @override
   ProfileRow? build() {
     // Re-fetches on every auth change (sign-in / sign-out / account switch).
     final session = ref.watch(authProvider);
+    ref.onDispose(() => _disposed = true);
     if (session == null || !SupabaseConfig.enabled) return null;
     unawaited(_load());
     return null;
@@ -101,6 +104,7 @@ class ProfileState extends Notifier<ProfileRow?> {
 
   Future<void> _load() async {
     final row = await ref.read(profileRepositoryProvider)?.fetch();
+    if (_disposed) return; // Phase 7 — disposed mid-fetch
     if (row != null) state = row;
   }
 }

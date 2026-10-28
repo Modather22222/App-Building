@@ -72,16 +72,25 @@ sb_patch_acct() { # best-effort write to a factory_accounts row (quarantine etc.
     -d "$2" > /dev/null || true
 }
 
-validate_pat() { # validate_pat <pat> → prints "ok" or a quarantine reason.
-                 # Identity + OAuth scopes via GitHub REST. Fine-grained PATs
-                 # return no scopes header and cannot create repos → rejected.
+validate_pat() { # validate_pat <pat> → "ok" | "TRANSIENT: …" | a definitive reason.
+                 # Definitive verdicts (expired/revoked, missing scopes) quarantine
+                 # the row; TRANSIENT ones (network blips, GitHub 5xx) only skip
+                 # the account for this run — quarantining on a hiccup
+                 # permanently shrank the pool (audit H-P1). Identity + OAuth
+                 # scopes via GitHub REST. Fine-grained PATs return no scopes
+                 # header and cannot create repos → rejected.
   local HEADERS CODE SCOPES
   HEADERS=$(curl -sS -m 20 -D - -o /dev/null \
     -H "Authorization: Bearer $1" -H "Accept: application/vnd.github+json" \
-    https://api.github.com/user 2>/dev/null) || { echo "identity check request failed"; return 0; }
+    https://api.github.com/user 2>/dev/null) || { echo "TRANSIENT: identity check request failed"; return 0; }
   CODE=$(printf '%s\n' "$HEADERS" | head -n1 | awk '{print $2}')
   if [[ "$CODE" != "200" ]]; then
-    echo "PAT rejected by GitHub (HTTP ${CODE:-unknown}) — expired, wrong, or revoked"
+    case "$CODE" in
+      401|403)
+        echo "PAT rejected by GitHub (HTTP ${CODE:-unknown}) — expired, wrong, or revoked" ;;
+      *)
+        echo "TRANSIENT: GitHub identity check returned HTTP ${CODE:-unknown}" ;;
+    esac
     return 0
   fi
   SCOPES=$(printf '%s\n' "$HEADERS" | grep -i '^x-oauth-scopes:' | cut -d':' -f2- | sed 's/^ //' | tr -d '\r')
@@ -373,13 +382,21 @@ elif [[ -n "$OWNER_SETTING" && -n "$SECRET_ID_SETTING" ]]; then
     --arg o "$OWNER_SETTING" --arg sid "$SECRET_ID_SETTING" '{p_owner:$o, p_pat_secret_id:$sid}')"
 fi
 
-# Claim the least-recently-used account, then pre-flight its PAT. A broken
-# row (expired/revoked token, missing repo/workflow scope, fine-grained
-# token) is quarantined — active=false + last_error — and the next account
-# is claimed: a bad paste costs seconds, not a build. Each failed validation
-# shrinks the pool, so the loop terminates in FACTORY_NO_ACCOUNTS at worst.
+# Claim the least-recently-used account, then pre-flight its PAT. Definitive
+# verdicts (expired/revoked token, missing repo/workflow scope, fine-grained
+# token) quarantine the row — active=false + last_error — and the next
+# account is claimed: a bad paste costs seconds, not a build. TRANSIENT
+# verdicts (GitHub blips) only skip the account for this run. Each
+# definitive validation shrinks the pool, so the loop terminates in
+# FACTORY_NO_ACCOUNTS at worst; the attempt bound covers transient-only
+# pools (a skipped row stays LRU-recent, so the next claim rotates rows).
 # PostgREST RPC returns an ARRAY envelope; paths handle both array/object.
+POOL_ATTEMPTS=0
 while :; do
+  POOL_ATTEMPTS=$((POOL_ATTEMPTS + 1))
+  if [[ "$POOL_ATTEMPTS" -gt 6 ]]; then
+    fail "GitHub account pool: no usable account after ${POOL_ATTEMPTS} claims (exhausted or unreachable) — retry the build"
+  fi
   ACCT=$(claim_account) || ACCT=""
   OWNER=$(jq -r '(.[0].owner // .owner) // empty' <<<"$ACCT" 2>/dev/null || echo "")
   if [[ -z "$OWNER" ]]; then
@@ -395,6 +412,10 @@ while :; do
     sb_patch_acct "$CLAIM_ID" '{"last_error":null}'
     echo "Build account: ${OWNER} (pool row ${CLAIM_ID}) — PAT ok"
     break
+  fi
+  if [[ "$VERDICT" == TRANSIENT:* ]]; then
+    echo "skipping ${OWNER} for this run: ${VERDICT}"
+    continue
   fi
   sb_patch_acct "$CLAIM_ID" "$(jq -nc --arg e "$VERDICT" '{active:false, last_error:$e}')"
   echo "quarantined ${OWNER}: ${VERDICT}"

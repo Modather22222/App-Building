@@ -12,6 +12,15 @@ class AuthSession {
   final String name;
   final String email;
   final bool guest;
+
+  // Phase 7 — value equality on the user id: token refreshes produce fresh
+  // session objects with the SAME user, and without this equality every
+  // refresh looked like an auth change (router rebuilds, provider resets).
+  @override
+  bool operator ==(Object other) => other is AuthSession && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class ChatThread {
@@ -115,6 +124,8 @@ class AppProject {
     BuildStage? stage,
     bool? failed,
     String? error,
+    bool? refused,
+    Map<String, dynamic>? buildInfo,
     Map<BuildStage, DateTime>? stageStarted,
     Map<BuildStage, DateTime>? stageFinished,
   }) {
@@ -129,6 +140,8 @@ class AppProject {
       stage: stage ?? this.stage,
       failed: failed ?? this.failed,
       error: error ?? this.error,
+      refused: refused ?? this.refused,
+      buildInfo: buildInfo ?? this.buildInfo,
       stageStarted: stageStarted ?? Map.of(this.stageStarted),
       stageFinished: stageFinished ?? Map.of(this.stageFinished),
     );

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/models.dart';
 import '../../data/project_repository.dart';
+import '../../data/providers.dart';
 import '../../data/supabase_config.dart';
 
 final projectRepositoryProvider = Provider<ProjectRepository?>((ref) {
@@ -28,8 +29,14 @@ String? _currentUserId() {
 class ProjectsState extends Notifier<List<AppProject>> {
   final Map<String, int> _runs = <String, int>{};
   int _seq = 0;
-  bool _bootstrapped = false;
+  String? _bootstrappedFor;
+  bool _disposed = false;
   Timer? _poll;
+
+  // Phase 7 — delete tombstones: a failed server delete used to let the 12 s
+  // poll resurrect the row mid-session. Tombstoned ids stay hidden for the
+  // whole session (ids are timestamp-based, so a collision is impossible).
+  final Set<String> _tombstones = <String>{};
 
   static const List<Duration> _stageDurations = [
     Duration(seconds: 6), // generating
@@ -40,11 +47,24 @@ class ProjectsState extends Notifier<List<AppProject>> {
 
   @override
   List<AppProject> build() {
-    ref.onDispose(() => _poll?.cancel());
-    if (!_bootstrapped) {
-      _bootstrapped = true;
-      unawaited(_loadFromStore());
-      _startPolling();
+    // Phase 7 — re-key on auth changes: sign-out clears the list, sign-in
+    // loads the new account's projects. AuthSession compares by user id, so
+    // token refreshes do NOT rebuild (no churn, no cross-account leakage).
+    final session = ref.watch(authProvider);
+    final userId = session?.id;
+    ref.onDispose(() {
+      _poll?.cancel();
+      _disposed = true;
+    });
+    if (_bootstrappedFor != userId) {
+      _bootstrappedFor = userId;
+      _tombstones.clear();
+      _poll?.cancel();
+      _poll = null;
+      if (userId != null) {
+        unawaited(_loadFromStore());
+        _startPolling();
+      }
     }
     return const [];
   }
@@ -68,14 +88,18 @@ class ProjectsState extends Notifier<List<AppProject>> {
       final rows = await repo.listProjects(uid).timeout(
         const Duration(seconds: 6),
       );
-      final fresh = [for (final row in rows) _fromRow(row)];
+      if (_disposed) return; // Phase 7 — disposed mid-fetch
+      final fresh = [
+        for (final row in rows)
+          if (!_tombstones.contains(row.id)) _fromRow(row),
+      ];
       if (!keepLocalExtras) {
         state = fresh;
       } else {
         final serverIds = {for (final p in fresh) p.id};
         final extras = [
           for (final p in state)
-            if (!serverIds.contains(p.id)) p,
+            if (!serverIds.contains(p.id) && !_tombstones.contains(p.id)) p,
         ];
         state = [...extras, ...fresh];
       }
@@ -310,6 +334,9 @@ class ProjectsState extends Notifier<List<AppProject>> {
 
   void remove(String id) {
     _runs[id] = (_runs[id] ?? 0) + 1; // cancel pending timers
+    // Phase 7 — tombstone BEFORE the server delete: if the delete fails, the
+    // 12 s poll must not resurrect the row mid-session.
+    _tombstones.add(id);
     state = [...state]..removeWhere((p) => p.id == id);
     final repo = ref.read(projectRepositoryProvider);
     if (repo != null) {
@@ -318,7 +345,9 @@ class ProjectsState extends Notifier<List<AppProject>> {
           try {
             await repo.delete(id);
           } catch (_) {
-            // Degrade: deleted locally only.
+            // Degrade: deleted locally only; the tombstone keeps it hidden
+            // until restart, where the server row (if the delete never
+            // landed) shows again honestly.
           }
         })(),
       );

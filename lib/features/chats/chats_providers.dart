@@ -6,6 +6,7 @@ import '../../core/utils/ids.dart';
 import '../../data/chat_repository.dart';
 import '../../data/mock/mock_chat_service.dart';
 import '../../data/models.dart';
+import '../../data/providers.dart';
 import '../../data/supabase_config.dart';
 
 final chatRepositoryProvider = Provider<ChatRepository?>((ref) {
@@ -19,25 +20,31 @@ String? _currentUserId() {
 }
 
 class ChatsState extends Notifier<List<ChatThread>> {
-  bool _bootstrapped = false;
+  String? _bootstrappedFor;
+  bool _disposed = false;
 
   @override
   List<ChatThread> build() {
-    if (!_bootstrapped) {
-      _bootstrapped = true;
-      unawaited(_loadFromStore());
+    // Phase 7 — re-key on auth changes (AuthSession == by user id, so token
+    // refreshes don't rebuild): sign-out clears the list, sign-in loads the
+    // new account's threads. No cross-account leakage.
+    final userId = ref.watch(authProvider)?.id;
+    ref.onDispose(() => _disposed = true);
+    if (_bootstrappedFor != userId) {
+      _bootstrappedFor = userId;
+      if (userId != null) unawaited(_loadFromStore(userId));
     }
     return const [];
   }
 
-  Future<void> _loadFromStore() async {
+  Future<void> _loadFromStore(String userId) async {
     final repo = ref.read(chatRepositoryProvider);
-    final userId = _currentUserId();
-    if (repo == null || userId == null) return;
+    if (repo == null) return;
     try {
       final rows = await repo.listChats(userId).timeout(
         const Duration(seconds: 5),
       );
+      if (_disposed) return; // Phase 7 — disposed mid-fetch
       state = [
         for (final row in rows)
           ChatThread(
@@ -141,20 +148,50 @@ final chatsProvider = NotifierProvider<ChatsState, List<ChatThread>>(
   ChatsState.new,
 );
 
+/// Phase 7 — a message row waiting in the persistence outbox.
+typedef _PendingInsert = ({
+  String id,
+  String role,
+  String content,
+  String? planName,
+  String? planSummary,
+});
+
 class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
   bool _bootstrapped = false;
-
+  String? _bootstrappedForSession;
+  Future<void>? _bootstrapInFlight;
   static const _welcomePrefix = 'welcome-';
+
+  // Phase 7 — persistence outbox: failed message inserts retry on a short
+  // timer instead of being lost forever. In-memory only (a restart loses the
+  // outbox, same as before, but a transient outage no longer eats turns).
+  final List<_PendingInsert> _outbox = <_PendingInsert>[];
+  Timer? _outboxTimer;
+  bool _flushing = false;
+  bool _disposed = false;
 
   @override
   List<ChatMessage> build(String arg) {
+    // Phase 7 — re-key on auth changes (AuthSession == by user id, so token
+    // refreshes don't rebuild); a new account resets the outbox so the
+    // previous account's queue is never flushed into its context.
+    final sessionId = ref.watch(authProvider)?.id;
+    if (_bootstrappedForSession != sessionId) {
+      _bootstrappedForSession = sessionId;
+      _bootstrapped = false;
+      _outbox.clear();
+      _outboxTimer?.cancel();
+      _outboxTimer = null;
+    }
+    ref.onDispose(() => _disposed = true);
     if (!_bootstrapped) {
       _bootstrapped = true;
       // Defer past build(): bootstrap's synchronous path (mock mode seeds
       // the greeting with no await in between) touches state, which is
       // illegal while the provider is still building. Real-mode runs
       // suspend at the fetch await first, so only mock mode ever hit this.
-      Future<void>.microtask(bootstrap);
+      Future<void>.microtask(() => bootstrap());
     }
     return const [];
   }
@@ -162,7 +199,14 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
   /// Pulls persisted messages for this thread. When the thread is brand new
   /// (or the store is offline) the agent greeting is seeded locally — it is
   /// intentionally never persisted.
-  Future<void> bootstrap() async {
+  Future<void> bootstrap() {
+    // Phase 7 — idempotent: the screen's initState AND the build hook both
+    // call this on first open; one fetch, one merge (the old double fetch
+    // let two merges interleave last-writer-wins).
+    return _bootstrapInFlight ??= _doBootstrap();
+  }
+
+  Future<void> _doBootstrap() async {
     final repo = ref.read(chatRepositoryProvider);
     if (repo == null) {
       _seedGreeting();
@@ -172,6 +216,7 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
       final rows = await repo.listMessages(arg).timeout(
         const Duration(seconds: 5),
       );
+      if (_disposed) return; // Phase 7 — disposed mid-fetch
       if (rows.isEmpty) {
         _seedGreeting();
         return;
@@ -191,6 +236,7 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
       // the reply streaming onto them) stay in place. The old overwrite wiped
       // them, they vanished from the thread, then "reordered" back into view
       // once their own insert landed and a later bootstrap restored them.
+      if (_disposed) return; // Phase 7 — disposed mid-merge
       final serverIds = {for (final m in server) m.id};
       final local = [
         for (final m in state)
@@ -198,7 +244,10 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
       ];
       state = [...server, ...local];
     } catch (_) {
-      _seedGreeting();
+      // Phase 7 — a store outage must not look like data loss: keep whatever
+      // is on screen (local turns, a previous greeting) instead of reseeding
+      // the greeting over real history.
+      if (!_disposed && state.isEmpty) _seedGreeting();
     }
   }
 
@@ -212,6 +261,42 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
         at: DateTime.now(),
       ),
     );
+  }
+
+  void _enqueue(_PendingInsert row) {
+    _outbox.add(row);
+    _outboxTimer ??= Timer.periodic(const Duration(seconds: 6), (_) => _flushOutbox());
+  }
+
+  Future<void> _flushOutbox() async {
+    if (_flushing || _outbox.isEmpty) return;
+    final store = ref.read(chatRepositoryProvider);
+    if (store == null || _disposed) return;
+    _flushing = true;
+    try {
+      while (_outbox.isNotEmpty && !_disposed) {
+        final row = _outbox.first;
+        try {
+          await store.insertMessage(
+            id: row.id,
+            chatId: arg,
+            role: row.role,
+            content: row.content,
+            planName: row.planName,
+            planSummary: row.planSummary,
+          );
+          _outbox.removeAt(0);
+        } catch (_) {
+          break; // still unreachable — retry on the next tick
+        }
+      }
+    } finally {
+      _flushing = false;
+      if (_outbox.isEmpty) {
+        _outboxTimer?.cancel();
+        _outboxTimer = null;
+      }
+    }
   }
 
   void add(ChatMessage message) {
@@ -233,7 +318,14 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
               content: message.text,
             );
           } catch (_) {
-            // Degrade: in-memory only.
+            // Phase 7 — queue for retry instead of losing the turn.
+            _enqueue((
+              id: message.id,
+              role: 'user',
+              content: message.text,
+              planName: null,
+              planSummary: null,
+            ));
           }
         })(),
       );
@@ -273,31 +365,25 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
     if (finalReply.text.isEmpty) return;
     unawaited(
       (() async {
+        final row = (
+          id: finalReply.id,
+          role: 'assistant',
+          content: finalReply.text,
+          planName: finalReply.planName,
+          planSummary: finalReply.planSummary,
+        );
         try {
           await store.insertMessage(
-            id: finalReply.id,
+            id: row.id,
             chatId: arg,
-            role: 'assistant',
-            content: finalReply.text,
-            planName: finalReply.planName,
-            planSummary: finalReply.planSummary,
+            role: row.role,
+            content: row.content,
+            planName: row.planName,
+            planSummary: row.planSummary,
           );
         } catch (_) {
-          // Degrade — but one quiet retry first: a flaky moment shouldn't
-          // cost the whole reply on the next app start.
-          await Future<void>.delayed(const Duration(seconds: 4));
-          try {
-            await store.insertMessage(
-              id: finalReply.id,
-              chatId: arg,
-              role: 'assistant',
-              content: finalReply.text,
-              planName: finalReply.planName,
-              planSummary: finalReply.planSummary,
-            );
-          } catch (_) {
-            // Still unreachable: reply stays in memory only.
-          }
+          // Phase 7 — the outbox retries instead of losing the reply.
+          _enqueue(row);
         }
       })(),
     );

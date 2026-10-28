@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/links.dart';
 import '../../data/models.dart';
 import '../../data/supabase_config.dart';
 import 'projects_providers.dart';
@@ -505,6 +506,16 @@ class _StickyBar extends ConsumerWidget {
       messenger.showSnackBar(
         const SnackBar(
           content: Text('The APK link is still syncing — retry in a moment.'),
+        ),
+      );
+      return;
+    }
+    // Phase 7 — the URL comes from a server row and is handed to the OS:
+    // only https GitHub release hosts may be opened.
+    if (!isTrustedDownloadUrl(apkUrl)) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text("This build's download link looks invalid — rebuild the app."),
         ),
       );
       return;
