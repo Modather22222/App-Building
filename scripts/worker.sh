@@ -144,6 +144,22 @@ patch_state() { # patch_state <status> — writes status + all stage markers
 
 trap 'fail "worker step failed at line $LINENO (see this run log)"' ERR
 
+# Phase 7 — heartbeat: long stages (smoke/repair loop, build poll) can legally
+# run 45+ minutes without a stage transition, but the watchdog sweep auto-fails
+# rows whose updated_at goes stale (>30 min). A background toucher refreshes
+# updated_at every 5 minutes for the worker's whole lifetime, so the sweep only
+# ever kills rows whose worker is actually gone. Dies with the process.
+( while :; do
+    sleep 300
+    curl -sS -m 20 -X PATCH \
+      "${SUPABASE_URL}/rest/v1/projects?id=eq.${PROJECT_ID}" \
+      -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+      -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+      -H "content-type: application/json" \
+      -H "Prefer: return=minimal" \
+      -d "{\"updated_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > /dev/null 2>&1 || true
+  done ) &
+
 with_retry() { # with_retry <label> <cmd...> — bursty POST endpoints trip GitHub's
                # secondary rate limits; backoff 15/30/60/120/240 clears them.
   local label="$1"; shift
@@ -183,9 +199,17 @@ with_retry() { # with_retry <label> <cmd...> — bursty POST endpoints trip GitH
 }
 
 # --- 1. project row ----------------------------------------------------------------
-ROW=$(curl -sS -m 20 "${SUPABASE_URL}/rest/v1/projects?id=eq.${PROJECT_ID}&select=id,name,prompt,summary,status" \
+# Phase 7 — the read is status-checked: a Supabase blip used to look exactly
+# like "row vanished" (silent exit 0, green run, stuck row). Transport errors
+# now fail the run honestly; only a genuine empty result means deleted.
+ROW_HTTP=$(curl -sS -m 20 -o /tmp/row.json -w '%{http_code}' \
+  "${SUPABASE_URL}/rest/v1/projects?id=eq.${PROJECT_ID}&select=id,name,prompt,summary,status" \
   -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" | jq -c '.[0] // empty')
+  -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}") || ROW_HTTP="000"
+if [[ "$ROW_HTTP" != "200" ]]; then
+  fail "could not read the project row (HTTP ${ROW_HTTP}) — retry the build"
+fi
+ROW=$(jq -c '.[0] // empty' /tmp/row.json)
 
 if [[ -z "$ROW" ]]; then
   echo "Project row vanished (deleted mid-flight) — nothing to do."
@@ -452,10 +476,30 @@ sleep 20
 BUILDING_MARKED=0
 FINAL_CONCLUSION=""
 FINAL_RUN_ID=""
+POLL_ERRORS=0
 for _ in $(seq 1 80); do # 80 * 20s ≈ 27 min ceiling
-  RUN_JSON=$(gh run list -R "$BUILD_REPO" --workflow build.yml --limit 40 \
-    --json status,conclusion,databaseId,headSha,number \
-    | jq -c --arg sha "$HEAD_SHA" '[.[] | select(.headSha == $sha)][0] // empty') || true
+  # Phase 7 — poll by head_sha SERVER-SIDE (the old --limit 40 + client filter
+  # dropped our run off page 1 under burst), with a per-call timeout, and
+  # consecutive API failures classified instead of silently looping to the
+  # 27-min timeout.
+  RUN_JSON=$(timeout 60 gh api "repos/${BUILD_REPO}/actions/runs?head_sha=${HEAD_SHA}&per_page=5" \
+    --jq '[.workflow_runs[0]] | map({status, conclusion, databaseId: .id, number: .run_number})[0] // empty' 2>/dev/null)
+  if [[ $? -ne 0 ]]; then
+    # API failure — distinct from "run not registered yet" (which is normal
+    # right after dispatch and must not burn the error budget).
+    POLL_ERRORS=$((POLL_ERRORS + 1))
+    if [[ "$POLL_ERRORS" -ge 5 ]]; then
+      fail "build polling is failing against the GitHub API (${POLL_ERRORS} consecutive errors) — retry the build"
+    fi
+    sleep 20
+    continue
+  fi
+  POLL_ERRORS=0
+  if [[ -z "$RUN_JSON" || "$RUN_JSON" == "null" ]]; then
+    sleep 20
+    continue
+  fi
+  POLL_ERRORS=0
   STATUS=$(jq -r '.status // ""' <<< "${RUN_JSON:-}")
   CONCLUSION=$(jq -r '.conclusion // ""' <<< "${RUN_JSON:-}")
   RUN_ID=$(jq -r '.databaseId // ""' <<< "${RUN_JSON:-}")
