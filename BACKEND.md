@@ -132,44 +132,60 @@ unknown project **404** · unconfigured factory **503** with clean message.
 The build side fans out over N GitHub accounts so one account's concurrency ceiling
 and secondary rate limits never cap the factory:
 
-- **`public.factory_accounts`** — `label · owner · pat · active · last_used_at · builds_used`.
+- **`public.factory_accounts`** — `label · owner · pat_secret_id · active · last_used_at · builds_used`.
   RLS ON with **no policies**: only the service role (worker / MCP) and the dashboard
-  Table Editor can read a row. A PAT never crosses a public API surface.
+  Table Editor can read a row. **PATs live ENCRYPTED in supabase_vault** (Phase 6) —
+  the table holds only the vault secret id; plaintext never sits in a column.
 - **`public.claim_factory_account()`** — atomic least-recently-used claim:
-  `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED …) RETURNING INTO` + `builds_used + 1`.
-  Grants: execute → service_role only (anon/authenticated revoked; verified 401).
+  `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED …) RETURNING INTO` + `builds_used + 1`;
+  the returned PAT is decrypted from the vault at read time (same response shape as the
+  pre-vault era). Grants: execute → service_role only.
   ⚠️ plpgsql gotcha (cost us a wave): `RETURNS TABLE` out-params shadow same-named table
   columns — every reference inside must be table-aliased or it dies at runtime with
   "column reference is ambiguous".
-- **Worker wiring (`scripts/worker.sh`)**: at stage 3 (after codegen) it (a) self-seeds its
-  own factory account (`Prefer: resolution=ignore-duplicates` on `on_conflict=owner` — never
-  overwrites dashboard-edited PATs), (b) claims an account, (c) runs every subsequent gh/git
-  operation on that account's PAT against `claimed_owner/app-building-outputs`.
-- **Secrets inventory**: per-account PAT → DB only; factory repo GH secrets stay
-  `OPENCODE_API_KEY` + `SUPABASE_SERVICE_ROLE_KEY` + `FACTORY_GH_PAT` (now bootstrap/dispatch
-  only); build repos use stock `github.token`; the app passes nothing.
+- **Worker wiring (`scripts/worker.sh`)**: at stage 3 (after codegen) it (a) ensures the
+  factory-managed row exists from the settings pair (`ensure_factory_account(owner,
+  pat_secret_id)` — resurrect if deleted, never overwrite), (b) claims an account
+  (PAT decrypted by the RPC), (c) runs every subsequent gh/git operation on that
+  account's PAT against `claimed_owner/app-building-outputs`.
+- **Secrets inventory**: per-account PAT → vault only; factory repo GH secrets are
+  `OPENCODE_API_KEY` + `SUPABASE_SERVICE_ROLE_KEY` (the `FACTORY_GH_PAT` era is over —
+  secret and env wiring both removed); build repos use stock `github.token`; the app
+  passes nothing.
 - Distribution under bursts is visible in `last_used_at` / `builds_used`.
 
-### Factory account management — fully DB-driven
+### Factory account management — fully DB-driven (vault era)
 
 The bootstrap account is NOT hardcoded. It is owned by a `factory_settings` pair:
 
 | setting | meaning |
 |---|---|
 | `factory_owner` | GitHub username of the self-healing account — or `none` to disable the factory-managed row entirely |
-| `factory_pat` | that account's PAT (factory_settings is service-only: RLS ON, no policies — anon/authenticated see nothing) |
+| `factory_pat_secret_id` | vault secret id holding that account's PAT (encrypted at rest) |
 
-Worker behavior every run: promote the legacy `FACTORY_GH_PAT` secret into these rows
-on first use (ignore-duplicates — user edits always win), then `ensure_factory_account`
-(resurrect the pair's row if deleted; NEVER overwrite an existing row; the `managed`
-flag is a globally-unique invariant — pointing the factory at a new owner clears the
-old row's flag).
+Worker behavior every run: `ensure_factory_account(owner, pat_secret_id)` resurrects
+the pair's row if deleted (NEVER overwrites an existing row; the `managed` flag is a
+globally-unique invariant — pointing the factory at a new owner clears the old row's
+flag), then claims via the LRU RPC.
 
-Operator playbook (dashboard only):
-- **Replace the factory-managed account** → edit the two settings rows; the old account row remains as an operator row (deactivate it if unwanted)
-- **Rotate the managed row's PAT** → edit the ROW's `pat` (rows are authoritative once they exist)
+Operator playbook (dashboard → SQL Editor, service context):
+
+```sql
+-- add a pool account (PAT goes straight into the vault, never a column)
+select public.add_factory_account('new-owner', 'github_pat_…', 'account-4');
+
+-- rotate a PAT (also re-activates a quarantined row — rotation fixes the reason)
+select public.rotate_factory_account('existing-owner', 'github_pat_…');
+
+-- disable / re-enable
+update public.factory_accounts set active = false where owner = 'existing-owner';
+
+-- inspect (no plaintext anywhere)
+select owner, label, active, last_error, builds_used from public.factory_accounts;
+```
+
+- **Bad PAT pasted** → first build quarantines the row automatically (`active=false`, `last_error`) and ships on the next account; fix it with `rotate_factory_account`
 - **Remove the factory-managed account** → set `factory_owner = 'none'`, then deactivate/delete the row
-- **Bad PAT pasted** → first build quarantines the row automatically (`active=false`, `last_error`) and ships on the next account
 
 Verified live (2026-10-27): the legacy credential auto-promoted into the pair
 (`factory_owner=Modather22222` + `factory_pat` present); a deliberately-bad PAT row was
