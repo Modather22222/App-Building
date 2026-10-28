@@ -37,6 +37,13 @@ jobs:
           gzip backup.dump
           ls -lh backup.dump.gz
 
+      - name: Install rclone (pinned)
+        run: |
+          RCLONE_VER=1.69.1
+          curl -sSfL -o /tmp/rclone.zip "https://downloads.rclone.org/v${RCLONE_VER}/rclone-v${RCLONE_VER}-linux-amd64.zip"
+          unzip -q /tmp/rclone.zip -d /tmp
+          sudo mv "/tmp/rclone-v${RCLONE_VER}-linux-amd64/rclone" /usr/local/bin/rclone
+
       - name: Upload to B2 (rclone over the S3 API)
         env:
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
