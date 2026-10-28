@@ -398,6 +398,13 @@ while :; do
   fi
   sb_patch_acct "$CLAIM_ID" "$(jq -nc --arg e "$VERDICT" '{active:false, last_error:$e}')"
   echo "quarantined ${OWNER}: ${VERDICT}"
+  # Phase 7 — quarantine is operator-visible immediately (alert consumer
+  # dispatches it to the configured webhook within 10 minutes).
+  curl -sS -m 20 -X POST "${SUPABASE_URL}/rest/v1/factory_alerts" \
+    -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+    -H "content-type: application/json" \
+    -d "$(jq -nc --arg d "account ${OWNER} quarantined: ${VERDICT}" '{kind:"account_quarantined", detail:$d}')" > /dev/null || true
 done
 BUILD_REPO="${OWNER}/app-building-outputs"
 export GH_TOKEN="$CLAIM_PAT"
