@@ -230,9 +230,13 @@ of apps per account.
    server-side with a 60s timeout and 5-consecutive-error classification. Live proof:
    full build through the new worker (ready, heartbeat + poll exercised). Sweep
    behavior test: fresh survived / 31-min-stale failed / 45-min-dispatched survived.
-2. Quarantine only on definitive verdicts + re-validation sweep for inactive rows
-3. Poll by `head_sha` via REST; per-call timeouts; classify poll errors
-4. Alert consumer: pg_cron → edge fn → email/Telegram webhook on `factory_alerts` + sweep actions + quarantine events
+    pg_net, delivered flag flipped. Owner setup = one settings row.
+2b. ~~Poll by `head_sha` via REST; per-call timeouts; classify poll errors~~
+    **DONE in slice 7.1** (same commit family): poll queries
+    `actions/runs?head_sha=` server-side with `timeout 60` per call and a
+    5-consecutive-error classification that fails honestly.
+2c. Quarantine only on definitive verdicts + re-validation sweep for inactive rows
+4. ~~Alert consumer~~ **DONE (see 2)** — sweep + quarantine + daily-ceiling all feed it
 5. Sentry (Flutter + edge functions) + uptime monitor on the rolling release URL
 6. Backups: Supabase Pro (PITR) or nightly `pg_dump` to private storage
 7. Flutter fixes: delete-tombstones, outbox for failed message writes, greeting-over-history fix, router `refreshListenable`, `ref.mounted` guards, `copyWith` fix, `apkUrl` launch validation (https + host allow-list)
