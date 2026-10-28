@@ -365,9 +365,15 @@ class _Meter extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
           children: [
-            Text(label, style: text.titleSmall),
+            // Expanded: at large text scales the label wraps instead of
+            // shoving the value off-card (Dynamic Type gate).
+            Expanded(
+              child: Text(label, style: text.titleSmall),
+            ),
+            const SizedBox(width: 8),
             Text(
               total <= 0 ? '$used · unlimited' : '$used / $total',
               style: text.labelLarge?.copyWith(color: colors.onSurfaceVariant),

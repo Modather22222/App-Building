@@ -354,6 +354,7 @@ class _SendButtonState extends State<_SendButton> {
           height: 48,
           child: IconButton.filled(
             onPressed: widget.enabled ? widget.onSend : null,
+            tooltip: 'Send message',
             icon: const Icon(Icons.arrow_upward_rounded),
           ),
         ),
@@ -392,30 +393,34 @@ class _TypingDotsState extends State<_TypingDots>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final phase = _controller.value;
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(3, (i) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2.5),
-              child: Opacity(
-                opacity: _opacityFor(i, phase),
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+    // Purely decorative streaming indicator — hidden from screen readers;
+    // the streaming reply itself is the meaningful content.
+    return ExcludeSemantics(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final phase = _controller.value;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                child: Opacity(
+                  opacity: _opacityFor(i, phase),
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
-            );
-          }),
-        );
-      },
+              );
+            }),
+          );
+        },
+      ),
     );
   }
 }

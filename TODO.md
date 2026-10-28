@@ -58,7 +58,20 @@ Update checklists as work completes. Scope decisions are pinned in `DESIGN.md`.
     the release APK over the locally built one will fail with "App not installed" unless the local one
     is uninstalled first (expected, not a bug).
 - [ ] App icon + splash assets (default Flutter icon in place; replace before any public build)
-- [ ] Accessibility pass: Dynamic Type 135%, screen-reader labels, contrast check on status pills
+- [x] Accessibility pass (shipped 2026-10-28 — the LAST launch blocker is closed):
+  - contrast: status pills are now PER-MODE inks (light needs darker, dark needs
+    lighter — one constant failed WCAG on the other theme); measured against the
+    12%-tinted pill background, not the bare surface. Permanent gate:
+    test/contrast_test.dart (12 checks, >= 4.5:1 both modes)
+  - Dynamic Type 135%: permanent gate test/dynamic_type_test.dart boots each tab
+    screen + the chat screen on a 390x844 viewport at 1.35x — profile _Meter row
+    overflow found and fixed (label wraps via Expanded); the gate also exposed a
+    real Riverpod bug: mock-mode greeting seeding touched state during the
+    notifier's build (deferred to a microtask — real-mode was never affected)
+  - screen readers: status chips announce "Build status: X" (dot excluded),
+    stage dots labeled (Completed/Failed), send button + password-visibility
+    toggle tooltips, decorative typing dots hidden from the tree; FABs and
+    bottom nav already carry visible labels
 
 ## Phase 2 — Backend & real persistence
 

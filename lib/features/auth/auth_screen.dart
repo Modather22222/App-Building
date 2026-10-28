@@ -208,6 +208,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   labelText: 'Password',
                   suffixIcon: IconButton(
                     onPressed: () => setState(() => _obscure = !_obscure),
+                    tooltip: _obscure ? 'Show password' : 'Hide password',
                     icon: Icon(
                       _obscure
                           ? Icons.visibility_off_outlined

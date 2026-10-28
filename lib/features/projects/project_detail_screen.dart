@@ -268,12 +268,12 @@ class _FailureCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.error_outline_rounded, color: AppTokens.statusFailed),
+                Icon(Icons.error_outline_rounded, color: AppTokens.failedColor(context)),
                 const SizedBox(width: 10),
                 Text(
                   'Build report',
                   style: text.titleSmall?.copyWith(
-                    color: AppTokens.statusFailed,
+                    color: AppTokens.failedColor(context),
                   ),
                 ),
               ],
@@ -305,13 +305,15 @@ class _StageDot extends StatelessWidget {
     return switch (state) {
       _StageState.done => Icon(
         Icons.check_circle_rounded,
-        color: AppTokens.statusReady,
+        color: AppTokens.stageColor(context, BuildStage.ready),
         size: 24,
+        semanticLabel: 'Completed',
       ),
       _StageState.failed => Icon(
         Icons.cancel_rounded,
-        color: AppTokens.statusFailed,
+        color: AppTokens.failedColor(context),
         size: 24,
+        semanticLabel: 'Failed',
       ),
       _StageState.active => SizedBox(
         width: 24,

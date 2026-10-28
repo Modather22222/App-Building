@@ -150,7 +150,11 @@ class MessagesState extends FamilyNotifier<List<ChatMessage>, String> {
   List<ChatMessage> build(String arg) {
     if (!_bootstrapped) {
       _bootstrapped = true;
-      unawaited(bootstrap());
+      // Defer past build(): bootstrap's synchronous path (mock mode seeds
+      // the greeting with no await in between) touches state, which is
+      // illegal while the provider is still building. Real-mode runs
+      // suspend at the fetch await first, so only mock mode ever hit this.
+      Future<void>.microtask(bootstrap);
     }
     return const [];
   }
