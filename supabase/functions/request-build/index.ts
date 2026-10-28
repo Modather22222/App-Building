@@ -14,6 +14,14 @@
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as Sentry from "https://esm.sh/@sentry/deno@10";
+
+// Phase 7 — crash reporting, gated on the SENTRY_DSN function secret
+// (unset = fully disabled).
+const SENTRY_DSN = Deno.env.get("SENTRY_DSN");
+if (SENTRY_DSN) {
+  Sentry.init({ dsn: SENTRY_DSN, environment: "production" });
+}
 
 const FACTORY_REPO = "Modather22222/App-Building";
 const WORKFLOW = "factory-worker.yml";
@@ -91,6 +99,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .eq("id", projectId)
     .maybeSingle();
   if (projectErr) {
+    if (SENTRY_DSN) Sentry.captureException(projectErr);
     return json({ error: "Lookup failed" }, 500);
   }
   if (!project) {
@@ -131,6 +140,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .eq("id", projectId)
     .select("id");
   if (claimErr) {
+    if (SENTRY_DSN) Sentry.captureException(claimErr);
     return json({ error: "Claim failed" }, 500);
   }
   if (!claimed || claimed.length === 0) {

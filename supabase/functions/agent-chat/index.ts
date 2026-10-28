@@ -11,6 +11,14 @@
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import * as Sentry from "https://esm.sh/@sentry/deno@10";
+
+// Phase 7 — crash reporting, gated on the SENTRY_DSN function secret
+// (unset = fully disabled).
+const SENTRY_DSN = Deno.env.get("SENTRY_DSN");
+if (SENTRY_DSN) {
+  Sentry.init({ dsn: SENTRY_DSN, environment: "production" });
+}
 
 const ZEN_URL = "https://opencode.ai/zen/v1/chat/completions";
 const DEFAULT_MODEL = "deepseek-v4.1-flash-free";
@@ -167,10 +175,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
     if (!r.ok) {
       const detail = (await r.text().catch(() => "")).slice(0, 300);
+      if (SENTRY_DSN) {
+        Sentry.captureMessage(`Agent model error (${r.status})`, {
+          level: "error",
+          extra: { detail },
+        });
+      }
       return json({ error: `Agent model error (${r.status})`, detail }, 502);
     }
     llm = (await r.json()) as typeof llm;
-  } catch (_) {
+  } catch (e) {
+    if (SENTRY_DSN) Sentry.captureException(e);
     return json({ error: "Agent model unreachable" }, 504);
   }
 

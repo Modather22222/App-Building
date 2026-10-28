@@ -71,12 +71,14 @@ jobs:
           flutter build apk --release
           --dart-define=SUPABASE_URL=https://loeaiuktjmhxeoxpyqjl.supabase.co
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}
 
       - name: Build AAB (release, signed — Play-ready)
         run: >-
           flutter build appbundle --release
           --dart-define=SUPABASE_URL=https://loeaiuktjmhxeoxpyqjl.supabase.co
           --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          --dart-define=SENTRY_DSN=${{ secrets.SENTRY_DSN }}
 
       - name: Publish APK + AAB to rolling release
         env:
