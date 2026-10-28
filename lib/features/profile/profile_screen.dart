@@ -134,6 +134,7 @@ class ProfileScreen extends ConsumerWidget {
     final monthStart = DateTime(now.year, now.month);
     var used = 0;
     for (final p in projects) {
+      if (p.refused) continue; // a refusal is a recorded failure, not budget
       if (p.createdAt.isAfter(monthStart)) used++;
     }
     return used;

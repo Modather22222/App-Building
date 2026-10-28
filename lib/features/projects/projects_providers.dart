@@ -122,6 +122,7 @@ class ProjectsState extends Notifier<List<AppProject>> {
       createdAt: row.createdAt,
       stage: stage,
       failed: row.status == 'failed',
+      refused: row.refused ?? false,
       stageStarted: started,
       stageFinished: finished,
       buildInfo: row.buildInfo,

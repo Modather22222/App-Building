@@ -80,6 +80,7 @@ class ProjectRepository {
                 const {},
             buildInfo:
                 (r['build_info'] as Map?)?.cast<String, dynamic>(),
+            refused: (r['refused'] as bool?) ?? false,
             createdAt: DateTime.parse(r['created_at'] as String),
             updatedAt: DateTime.parse(r['updated_at'] as String),
           ),
@@ -96,6 +97,7 @@ class ProjectRepository {
       await SupabaseConfig.client.from('projects').update({
         'status': 'generating',
         'error': null,
+        'refused': false,
         'stage_times': {'generating': atUtc},
         'updated_at': atUtc,
       }).eq('id', id);
@@ -126,6 +128,7 @@ class ProjectRow {
     this.repo,
     this.apkUrl,
     this.error,
+    this.refused,
     this.buildInfo,
   });
 
@@ -137,6 +140,7 @@ class ProjectRow {
   final String? repo;
   final String? apkUrl;
   final String? error;
+  final bool? refused;
   final Map<String, dynamic> stageTimes; // {stage: iso, stage_done: iso}
   final Map<String, dynamic>? buildInfo; // {run_id, run_number, size_bytes}
   final DateTime createdAt;

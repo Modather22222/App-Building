@@ -78,6 +78,7 @@ class AppProject {
     this.repo,
     this.apkUrl,
     this.error,
+    this.refused = false,
     Map<BuildStage, DateTime>? stageStarted,
     Map<BuildStage, DateTime>? stageFinished,
     this.buildInfo,
@@ -92,6 +93,7 @@ class AppProject {
   final String? repo; // owner/name of the generated repo (from the factory)
   final String? apkUrl; // release asset URL once the build lands
   final String? error; // failure detail from the factory
+  bool refused; // quota refusal recorded by the trigger (not spent budget)
   final Map<String, dynamic>? buildInfo; // {run_id, run_number, size_bytes}
   BuildStage stage;
   bool failed;
