@@ -211,7 +211,15 @@ of apps per account.
    turn refused with no plan; benign turn emitted "Habit Streaks" → audited
    allowed. Future hardening: LLM-based classifier to replace the regex screen.
 5. Rotate `FACTORY_DISPATCH_TOKEN` (pre-launch promise); revoke `anon` execute on `assert_rate_ok`; enable leaked-password protection; prompt/content length caps (DB CHECK + client)
-6. Move PATs into supabase_vault; validate `apkUrl` host allow-list client-side
+6. ~~PATs → supabase_vault~~ **DONE 2026-10-28 (b5da174)** — plaintext column dropped;
+   claim decrypts at read time (identical response shape, worker claim path unchanged);
+   ensure takes the secret id; add/rotate RPCs for dashboard management (service-role
+   only); dead FACTORY_GH_PAT path removed from worker + workflow; runbook in
+   BACKEND.md. Live proof: full build through bootstrap→ensure(secret-id)→claim→
+   vault-decrypt shipped ready. Verified: claimed PAT authenticated as its owner
+   against the GitHub API.
+   **Phase 6 complete.** Remaining owner steps: leaked-password toggle (dashboard),
+   dispatch-token rotation (deferred to pre-public-launch by owner decision).
 
 ### Phase 7 — Reliability & operations
 1. Worker heartbeat (stage patch every ~5 min) + sweep contract (ignore active run ids)
@@ -220,7 +228,7 @@ of apps per account.
 4. Alert consumer: pg_cron → edge fn → email/Telegram webhook on `factory_alerts` + sweep actions + quarantine events
 5. Sentry (Flutter + edge functions) + uptime monitor on the rolling release URL
 6. Backups: Supabase Pro (PITR) or nightly `pg_dump` to private storage
-7. Flutter fixes: delete-tombstones, outbox for failed message writes, greeting-over-history fix, router `refreshListenable`, `ref.mounted` guards, `copyWith` fix
+7. Flutter fixes: delete-tombstones, outbox for failed message writes, greeting-over-history fix, router `refreshListenable`, `ref.mounted` guards, `copyWith` fix, `apkUrl` launch validation (https + host allow-list)
 
 ### Phase 8 — Scale-out architecture
 1. Monorepo sharding (repo per N apps or per month) + clone pruning
