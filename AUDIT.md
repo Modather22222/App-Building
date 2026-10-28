@@ -176,8 +176,22 @@ of apps per account.
    rejection (400 proven), build.yml inputs ONLY via job env (zero `inputs.*` in run:;
    full live build shipped signed APK+AAB through the new script — row ready, release
    verified on the LRU-chosen account)
-2. B2: env scrubbing around flutter invocations + mechanical allowlist prune + pubspec source/pin validation
-3. B3: per-account signing keys + rotation runbook
+2. ~~B2: env scrubbing around flutter invocations + mechanical allowlist prune + pubspec source/pin validation~~
+   **DONE 2026-10-28 (99480d7)** — `UNTRUSTED_ENV` strips service/LLM/pool keys from
+   every flutter probe invocation (19/19 synthetic incl. timeout composition); file
+   allowlist enforced mechanically before the monorepo copy (android/ gradle trees,
+   tool scripts, request.md, .dart_tool deleted; pubspec.lock kept for reproducible
+   builds); pubspec gate rejects git/path/hosted sources + dependency_overrides before
+   execution. Live proof: probe build shipped signed APK+AAB through the hardened
+   worker (row ready, release verified).
+3. ~~B3: per-account signing keys + rotation runbook~~
+   **DONE 2026-10-28** — each outputs repo holds its OWN keystore (DN encodes the
+   account: `CN=App Building <owner>`); live proof: probe build on hesab59hesba
+   shipped an APK whose signer DN literally names the building account. Factory repo
+   keeps the original key (now signs exactly one app). Rotation runbook: regenerate
+   per-account keystore → update that account's KEYSTORE_* secrets → installed apps
+   need one uninstall (signature change). Backups: keystores + passwords live in the
+   scratch dir — owner must copy them into a password manager.
 4. H-P5: refusal policy layer + post-plan classifier + plan audit log
 5. Rotate `FACTORY_DISPATCH_TOKEN` (pre-launch promise); revoke `anon` execute on `assert_rate_ok`; enable leaked-password protection; prompt/content length caps (DB CHECK + client)
 6. Move PATs into supabase_vault; validate `apkUrl` host allow-list client-side
