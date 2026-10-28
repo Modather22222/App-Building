@@ -236,9 +236,13 @@ Work order: each slice = implement → verify live → commit → next.
       (gh run view --log-failed, last 200 lines) and translates: pub.dev network
       hiccup / dart compile failure / Gradle step failure / rate limiter / cancelled
       run → plain-language error on the row (run link preserved in the message tail).
-- [ ] Slice 8 — Telemetry: activation funnel (signup → first chat → first plan → first
-      build → first download) as a SQL view over existing tables + one client event for
-      download taps (insert-only RLS events table).
+- [x] Slice 8 — Telemetry funnel (shipped + verified):
+      signup → first chat → first plan → first build derived SERVER-SIDE from
+      existing rows (no client events); the device-only stage (download tap) logs
+      funnel_events (insert-only RLS: own rows in, forged user_id rejected 403,
+      select revoked, FK cascade keeps counts honest) + `funnel_view` (30-day
+      windows, service-role only) — verified live: insert 201, view counts correct.
+      Read the funnel: `select * from funnel_view` in the dashboard SQL editor.
 - [ ] Slice 9 — Distribution & trust: direct-APK now / Play Store decision doc,
       PRIVACY.md + terms summary + link in profile screen, beta recruitment kit.
 

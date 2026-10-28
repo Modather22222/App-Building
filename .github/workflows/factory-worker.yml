@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout factory repo (templates + worker)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Flutter is needed for the worker-side smoke-test gate (free public
       # minutes) so broken generated code never reaches a private repo build.

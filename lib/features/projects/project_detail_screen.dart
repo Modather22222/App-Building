@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../data/models.dart';
+import '../../data/supabase_config.dart';
 import 'projects_providers.dart';
 
 class ProjectDetailScreen extends ConsumerWidget {
@@ -515,6 +516,19 @@ class _StickyBar extends ConsumerWidget {
         messenger.showSnackBar(
           const SnackBar(content: Text('Could not open the download link.')),
         );
+      } else {
+        // Phase 5 — telemetry: the download tap is the funnel's last stage
+        // (earlier stages are server-derived from existing rows). Silent
+        // degrade: analytics must never disturb the action itself.
+        if (SupabaseConfig.enabled) {
+          try {
+            await SupabaseConfig.client
+                .from('funnel_events')
+                .insert({'kind': 'download', 'project_id': project.id});
+          } catch (_) {
+            // Degrade: the event is lost, not the download.
+          }
+        }
       }
     } catch (error) {
       messenger.showSnackBar(
