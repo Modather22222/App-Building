@@ -261,7 +261,17 @@ of apps per account.
    lifecycle rule; failures write `factory_alerts`. First run proven: 93 KB gz,
    gunzips to 360 KB, `PGDMP` header, checksum match (restore recipe +
    gotchas in BACKEND.md). Supabase Pro PITR remains an optional future upgrade.
-7. Flutter fixes: delete-tombstones, outbox for failed message writes, greeting-over-history fix, router `refreshListenable`, `ref.mounted` guards, `copyWith` fix, `apkUrl` launch validation (https + host allow-list)
+7. ~~Uptime monitor~~ **DONE 2026-10-29 (8822706)** — GitHub Actions cron
+   `*/30`: probes auth `/auth/v1/health` (200), REST `profiles` (200), POST
+   request-build (401), POST agent-chat (401). On failure: deduped
+   `factory_alerts` row via the `uptime_last_ok` tracker + a raw Sentry envelope
+   that fires even when Supabase itself is down; the run stays red. First run
+   GREEN — all four expected codes verified in the log, `uptime_last_ok=true`
+   confirmed in the DB.
+
+**Phase 7 reliability & ops: complete.** Open owner step: mirror `SENTRY_DSN`
+into Supabase dashboard → Edge Functions → Secrets so backend error paths
+actually reach Sentry (app-side is already live).
 
 ### Phase 8 — Scale-out architecture
 1. Monorepo sharding (repo per N apps or per month) + clone pruning
