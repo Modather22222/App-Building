@@ -33,6 +33,8 @@ jobs:
           # pg_dump older than the server refuses to run.
           docker run --rm -v "$PWD:/out" postgres:17-alpine \
             pg_dump --no-owner --no-privileges -Fc -f /out/backup.dump "$DATABASE_URL"
+          # NOTE: the sha256 refers to the UNCOMPRESSED dump - verify by
+          # gunzipping first, then hashing (see BACKEND.md, restore recipe).
           sha256sum backup.dump | cut -d' ' -f1 > backup.sha256
           gzip backup.dump
           ls -lh backup.dump.gz

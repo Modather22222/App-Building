@@ -319,3 +319,62 @@ chat screen _send()
 3. Run advisors → fix issues → `supabase db pull` full migration when green
 4. Flutter side: package + init + repos + provider swap
 5. E2E: guest sign-in creates on-device account, chats persist across installs
+
+# Phase 7 — Nightly database backup (Backblaze B2)
+
+## Pipeline (`.github/workflows/nightly-backup.yml`)
+
+Cron `0 3 * * *` (03:00 UTC daily) + manual dispatch. Free on the public repo:
+
+1. `pg_dump` version-exact Postgres **17** client (docker `postgres:17-alpine`;
+   the Supabase server is 17.11 — a runner pg_dump older than the server refuses).
+   Connection: `DATABASE_URL` secret = the **session pooler** URI
+   (`postgresql://postgres.<ref>:<pw>@aws-0-eu-west-1.pooler.supabase.com:5432/postgres`
+   — runners are IPv4-only, the direct `db.<ref>` host is IPv6-only).
+   Custom format (`-Fc`), `--no-owner --no-privileges`.
+2. `backup.sha256` = checksum of the **UNCOMPRESSED** dump (taken before gzip).
+   Verify by gunzipping first, then hashing — NOT by hashing the .gz.
+3. Upload `backups/backup-YYYY-MM-DD.dump.gz` + `.sha256` via **rclone's NATIVE
+   B2 backend** (`rclone config create b2 b2 account <keyId> key <key>`). The
+   bucket-scoped key's **S3 layer 403s on HeadObject** (rclone does a
+   HEAD-before-write) — the native API is fully proven; do not switch back to s3.
+4. Retention lives in the **bucket lifecycle rule** on B2 (`backups/` prefix:
+   hide after 14 days, delete 1 day later) — no cleanup code in the workflow.
+5. On failure a step writes `factory_alerts(kind=backup_failed)` with the
+   service role key — routed to the owner webhook by the existing
+   `factory-alert-dispatch` cron within 10 minutes.
+
+## Secrets (GitHub repo)
+
+`DATABASE_URL`, `B2_KEY_ID`, `B2_APP_KEY`, `B2_BUCKET`, `B2_S3_ENDPOINT`
+(the last two kept for reference; the native backend doesn't need the endpoint).
+
+## B2 layout
+
+- Bucket `app-building` (eu-central-003), **private**.
+- Application key `appbuilding-backup` — bucket-scoped, capabilities
+  listFiles/readFiles/writeFiles/deleteFiles only. Lifecycle rule set via
+  `b2_update_bucket`. Broader account key `appbuilding` stays for dashboard use.
+
+## First run proof (2026-10-28)
+
+Run GREEN; bucket contains `backups/backup-2026-10-28.dump.gz` (93 104 B) +
+matching sha256. Downloaded locally: gzip magic ok, decompresses to 360 728 B,
+`PGDMP` custom-format header, SHA-256 **match**.
+
+## Restore recipe (disaster recovery)
+
+1. Fresh Supabase project (or any Postgres 17): get the session-pooler URI with
+   its password.
+2. `docker run --rm -v "$PWD:/out" postgres:17-alpine bash -c "gunzip -c /out/backup-<date>.dump.gz > /out/backup.dump && pg_restore -d '<URI>' --no-owner --no-privileges --clean --if-exists /out/backup.dump"`
+3. Extensions/vault may warn on a non-Supabase target — Supabase-to-Supabase
+   restores work as-is with `--no-owner --no-privileges`.
+4. Afterwards point the app's `SUPABASE_*` dart-defines (and edge functions) at
+   the new ref.
+
+## Battle-tested gotchas (all hit and fixed today)
+
+- rclone is **not preinstalled** on ubuntu-latest — pin 1.69.1 and copy the
+  binary to `/usr/local/bin` (install step is in the workflow).
+- B2 bucket-scoped keys + rclone's S3 provider = `403 Forbidden` on HeadObject
+  even when the key holds readFiles — use the native `b2` backend.

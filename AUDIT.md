@@ -255,7 +255,12 @@ of apps per account.
    edge functions capturing lookup/claim/dispatch/LLM failures, CI passes SENTRY_DSN
    into artifacts. DSN set as a repo secret; test event verified 200 against the
    ingest endpoint. Owner step: mirror SENTRY_DSN into the Supabase function secrets.
-6. Backups: Supabase Pro (PITR) or nightly `pg_dump` to private storage
+6. ~~Backups~~ **DONE 2026-10-29 (aa25349 + dc669f3, 1a63eca)** — nightly
+   `pg_dump` (docker postgres:17 client, server is 17.11) over the IPv4 session
+   pooler → rclone native-B2 upload → private bucket `app-building` with a 14-day
+   lifecycle rule; failures write `factory_alerts`. First run proven: 93 KB gz,
+   gunzips to 360 KB, `PGDMP` header, checksum match (restore recipe +
+   gotchas in BACKEND.md). Supabase Pro PITR remains an optional future upgrade.
 7. Flutter fixes: delete-tombstones, outbox for failed message writes, greeting-over-history fix, router `refreshListenable`, `ref.mounted` guards, `copyWith` fix, `apkUrl` launch validation (https + host allow-list)
 
 ### Phase 8 — Scale-out architecture
