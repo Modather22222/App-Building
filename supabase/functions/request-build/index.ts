@@ -217,6 +217,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!dispatch.ok) {
     const detail = await dispatch.text().catch(() => "");
+    if (SENTRY_DSN) {
+      Sentry.captureMessage(`Factory dispatch failed (${dispatch.status})`, {
+        level: "error",
+        extra: { detail, projectId },
+      });
+    }
     await failRow(
       admin,
       projectId,

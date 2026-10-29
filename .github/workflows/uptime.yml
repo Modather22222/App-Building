@@ -1,0 +1,112 @@
+# Uptime probes — every 30 min: auth health, REST (DB), and the edge gateway.
+#
+# On failure: a DEDUPED factory_alerts row (alert consumer pushes to the owner
+# webhook within 10 min) plus a raw Sentry envelope — which still fires when
+# Supabase itself is down, since ingest is external. The run is left red.
+name: Uptime check
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  probe:
+    name: auth + REST + edge alive
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe endpoints
+        id: probe
+        env:
+          SUPABASE_URL: https://loeaiuktjmhxeoxpyqjl.supabase.co
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -u
+          probe() {
+            local expect=$1; shift
+            local status
+            status=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$@" 2>/dev/null || true)
+            echo "probe '$*' -> '$status' (expect $expect)"
+            [ "$status" = "$expect" ]
+          }
+          fail=0
+          probe 200 -H "apikey: $SUPABASE_ANON_KEY" "$SUPABASE_URL/auth/v1/health" || fail=1
+          probe 200 -H "apikey: $SUPABASE_ANON_KEY" "$SUPABASE_URL/rest/v1/profiles?select=id&limit=1" || fail=1
+          probe 401 -X POST "$SUPABASE_URL/functions/v1/request-build" || fail=1
+          probe 401 -X POST "$SUPABASE_URL/functions/v1/agent-chat" || fail=1
+          echo "fail=$fail"
+          echo "fail=$fail" >> "$GITHUB_OUTPUT"
+          # never fail here — the alert step turns the whole run red
+          exit 0
+
+      - name: Record healthy (resets the dedupe tracker)
+        if: steps.probe.outputs.fail == '0'
+        env:
+          SUPABASE_URL: https://loeaiuktjmhxeoxpyqjl.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          curl -sS -m 15 -X POST "$SUPABASE_URL/rest/v1/factory_settings?on_conflict=key" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Prefer: resolution=merge-duplicates" \
+            -H "content-type: application/json" \
+            -d '{"key":"uptime_last_ok","value":"true"}' > /dev/null
+          echo "all probes healthy"
+
+      - name: Alert on failure (deduped)
+        if: steps.probe.outputs.fail != '0'
+        env:
+          SUPABASE_URL: https://loeaiuktjmhxeoxpyqjl.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          set -u
+          H() { echo -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"; }
+          prev=$(curl -sS -m 15 -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            "$SUPABASE_URL/rest/v1/factory_settings?select=value&key=eq.uptime_last_ok&limit=1" 2>/dev/null || true)
+          case "$prev" in
+            *'"value":"false"'*)
+              echo "dedupe: previous probe also failed — alerts already out"
+              exit 1
+              ;;
+            *) echo "first failure (or tracker unreadable) — alerting";;
+          esac
+
+          # 1) alert row -> existing alert consumer (webhook within 10 min)
+          curl -sS -m 15 -X POST "$SUPABASE_URL/rest/v1/factory_alerts" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "content-type: application/json" \
+            -d '{"kind":"uptime_failed","detail":"uptime probe failed: auth/REST/edge did not respond with the expected codes"}' \
+            > /dev/null 2>&1 || true
+
+          # 2) raw Sentry envelope — external, works even when Supabase is down
+          if [ -n "${SENTRY_DSN:-}" ]; then
+            key="${SENTRY_DSN%%@*}"; key="${key#https://}"
+            rest="${SENTRY_DSN#*@}"
+            host="${rest%%/*}"; pid="${rest##*/}"
+            eid="$(openssl rand -hex 16)"
+            ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            ev='{"event_id":"'$eid'","timestamp":"'$ts'","level":"error","platform":"javascript","environment":"uptime","message":{"formatted":"App Building uptime probe FAILED (auth/REST/edge did not respond)"}}'
+            hdr='{"event_id":"'$eid'","sent_at":"'$ts'","dsn":"'$SENTRY_DSN'"}'
+            ih='{"type":"event","length":"'$(echo -n "$ev" | wc -c)'"}'
+            printf '%s\n%s\n%s\n' "$hdr" "$ih" "$ev" | \
+              curl -sS -m 20 -X POST "https://$host/api/$pid/envelope/" \
+                -H "content-type: application/x-sentry-envelope" \
+                -H "X-Sentry-Auth: Sentry sentry_version=7, sentry_key=$key" \
+                --data-binary @- > /dev/null 2>&1 || true
+          fi
+
+          # 3) mark the tracker so the next failure does not double-alert
+          curl -sS -m 15 -X POST "$SUPABASE_URL/rest/v1/factory_settings?on_conflict=key" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Prefer: resolution=merge-duplicates" \
+            -H "content-type: application/json" \
+            -d '{"key":"uptime_last_ok","value":"false"}' > /dev/null 2>&1 || true
+
+          exit 1
